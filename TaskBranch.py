@@ -89,7 +89,12 @@ class TaskBranch:
         time_elapsed = time.time() - start_timer
         print('\nTraining complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
         print('Best val loss: {:4f}\n'.format(best_val_loss))
+
+        model_string = "VAE_epochs"+str(num_epochs)+",batch"+str(batch_size)+",z_d"+str(latent_dim)+",synth"+ str(is_synthetic)+",rebuilt"+ str(is_take_existing_VAE)+",lr"+str(learning_rate)+",betas"+str(betas)
+        model_string += " v1"
+
         self.VAE_most_recent.load_state_dict(best_model_wts)
+        torch.save(self.VAE_most_recent,self.initial_directory_path+model_string)
 
         del self.VAE_most_recent
         torch.cuda.empty_cache()
@@ -145,7 +150,7 @@ class TaskBranch:
         return loss_sum
 
 
-    def generate_synthetic_batch(self, batch_size = 64):
+    #def generate_synthetic_batch(self, batch_size = 64):
 
 
 
@@ -158,7 +163,7 @@ class TaskBranch:
         self.VAE_most_recent = torch.load(PATH)
 
 
-    def create_and_train_CNN(self, num_epochs=30, hidden_dim=10, latent_dim=75, is_frozen=False, is_off_shelf_model = False,
+    def create_and_train_CNN(self, num_epochs=30,  batch_size = 64, hidden_dim=10, latent_dim=75, is_frozen=False, is_off_shelf_model = False,
                              epoch_improvement_limit=20, learning_rate=0.0003, betas=(0.999, .999)):
 
         # need to fix hidden dimensions
@@ -176,23 +181,32 @@ class TaskBranch:
             # create a new fully connected final layer for training
             self.CNN_most_recent.fc = nn.Linear(num_ftrs, self.num_categories_in_task)
 
+            if is_frozen == True:
+                # only fc layer being optimised
+                self.CNN_optimizer = torch.optim.Adam(self.CNN_most_recent.fc.parameters(), lr=learning_rate, betas=betas)
+            else:
+                # all layers being optimised
+                self.CNN_optimizer = torch.optim.Adam(self.CNN_most_recent.parameters(), lr=learning_rate, betas=betas)
+
         else:
             self.CNN_most_recent = None
+            # all layers being optimised
+            self.CNN_optimizer = torch.optim.Adam(self.CNN_most_recent.parameters(), lr=learning_rate, betas=betas)
 
         criterion = nn.CrossEntropyLoss()
-        self.CNN_optimizer = torch.optim.Adam(self.CNN_most_recent.parameters(), lr=learning_rate, betas=betas)
 
-        dataloaders = self.dataset_interface.return_data_loaders('CNN', BATCH_SIZE=64)
-
+        dataloaders = self.dataset_interface.return_data_loaders('CNN', BATCH_SIZE=batch_size)
 
 
         start_timer = time.time()
         best_val_acc = 0.0
+        self.CNN_most_recent.to(self.device)
+        patience_counter = 0
 
         for epoch in range(num_epochs):
 
-            train_loss, correct_guesses_train = self.run_a_CNN_epoch_calculate_loss(dataloaders['train'], is_train=True)
-            val_loss, correct_guesses_val = self.run_a_CNN_epoch_calculate_loss(dataloaders['val'], is_train=False)
+            train_loss, correct_guesses_train = self.run_a_CNN_epoch_calculate_loss(dataloaders['train'],criterion, is_train=True)
+            val_loss, correct_guesses_val = self.run_a_CNN_epoch_calculate_loss(dataloaders['val'], criterion,is_train=False)
 
             train_loss /= self.dataset_interface.training_set_size
             val_loss /= self.dataset_interface.val_set_size
@@ -206,12 +220,12 @@ class TaskBranch:
 
                 #send to CPU to save on GPU RAM
                 best_model_wts = copy.deepcopy(self.CNN_most_recent.state_dict())
-                print(f'Epoch {epoch}, Train Acc: {train_acc:.2f}, Val Acc: {val_acc:.2f} ', time.time(),
+                print(f'Epoch {epoch}, Train Acc: {train_acc:.2f}, Val Acc: {val_acc:.4f} ', time.time(),
                       "**** new best ****")
 
 
             else:
-                print(f'Epoch {epoch}, Train Acc: {train_acc:.2f}, Val Acc: {val_acc:.2f} ', time.time())
+                print(f'Epoch {epoch}, Train Acc: {train_acc:.2f}, Val Acc: {val_acc:.4f} ', time.time())
                 patience_counter += 1
 
             if patience_counter > epoch_improvement_limit:
@@ -219,8 +233,14 @@ class TaskBranch:
 
         time_elapsed = time.time() - start_timer
         print('\nTraining complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
-        print('Best val loss: {:4f}\n'.format(best_val_acc))
+        print('Best val acc: {:4f}\n'.format(best_val_acc))
+
+        model_string = "CNN "+self.task_name+" epochs" + str(num_epochs) + ",batch" + str(batch_size) +",pretrained" + str(is_off_shelf_model) + ",frozen"+str(is_frozen)+",lr" + str(
+            learning_rate) + ",betas" + str(betas)
+        model_string += " v1"
+
         self.CNN_most_recent.load_state_dict(best_model_wts)
+        torch.save(self.CNN_most_recent, self.initial_directory_path + model_string)
 
         del self.CNN_most_recent
         torch.cuda.empty_cache()
@@ -245,21 +265,22 @@ class TaskBranch:
             #print(x.size())
             # x = x.view(batch_size, 1, 28, 28)
             x = x.to(self.device)
-            # print(x)
+            y = y.to(self.device)
+            #print(x.size())
 
             # convert y into one-hot encoding
-            y_one_hot = Utils.idx2onehot(y.view(-1, 1), self.num_categories_in_task)
-            y_one_hot.to(self.device)
+            # y_one_hot = Utils.idx2onehot(y.view(-1, 1), self.num_categories_in_task)
+            # y_one_hot.to(self.device)
 
             # update the gradients to zero
-            self.VAE_optimizer.zero_grad()
+            self.CNN_optimizer.zero_grad()
 
             # forward pass
             # track history if only in train
             with torch.set_grad_enabled(is_train):
                 outputs = self.CNN_most_recent(x)
                 _, preds = torch.max(outputs, 1)
-                loss = criterion(outputs, y)
+                loss = criterion(outputs.to(self.device), y.to(self.device))
 
             # loss
             loss_sum += loss.item()

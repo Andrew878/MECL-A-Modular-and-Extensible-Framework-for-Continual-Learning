@@ -213,4 +213,3 @@ class CVAE(nn.Module):
         return synthetic_data_list_x, synthetic_data_list_y
 
 
-    def

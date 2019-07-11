@@ -18,7 +18,7 @@ torch.manual_seed(manualSeed)
 PATH_DATA_MNIST = "/cs/tmp/al278/MNIST"
 PATH_DATA_FashionMNIST = "/cs/tmp/al278/FashionMNIST"
 PATH_DATA_EMNIST = "/cs/tmp/al278/EMNIST"
-PATH_MODELS = "/cs/tmp/al278/"
+PATH_MODELS = "/cs/tmp/al278/proper/"
 
 dataset_path_list = [(datasets.MNIST,PATH_DATA_MNIST),(datasets.FashionMNIST,PATH_DATA_FashionMNIST),(datasets.EMNIST,PATH_DATA_EMNIST)]
 
@@ -108,22 +108,28 @@ fashion_mnist_task_branch = task.TaskBranch('Fashion', fashion_minist_data_and_i
 
 
 
-latent_dim = [50, 75, 100]
-learning_rate = [0.00025, 0.0003, 0.00035]
-betas=[(0.5, .999),(0.75, .999),(0.999, .999)]
+mnist_task_branch.create_and_train_CNN(num_epochs=30, hidden_dim=10, latent_dim=75, is_frozen=True, is_off_shelf_model = True,
+                             epoch_improvement_limit=20, learning_rate=0.0003, betas=(0.999, .999))
 
-for ld in latent_dim:
-    for lr in learning_rate:
-        for b in betas:
-            print("\n****************\nnew hyperparemeters  ")
-            print("For MNIST: latent dimensions", ld," learning rate: ",lr, " betas ",b)
-            mnist_task_branch.create_and_train_VAE(num_epochs=30, hidden_dim=10, latent_dim=ld, is_synthetic=False,epoch_improvement_limit=20, learning_rate=lr, betas=b)
-            print("For MNIST: latent dimensions", ld," learning rate: ",lr, " betas ",b)
+fashion_mnist_task_branch.create_and_train_CNN(num_epochs=30, hidden_dim=10, latent_dim=75, is_frozen=True, is_off_shelf_model = True,
+                             epoch_improvement_limit=20, learning_rate=0.0003, betas=(0.999, .999))
 
-
-            print("\nFor Fashion MNIST: latent dimensions", ld," learning rate: ",lr, " betas ",b)
-            fashion_mnist_task_branch.create_and_train_VAE(num_epochs=30, hidden_dim=10, latent_dim=ld, is_synthetic=False,epoch_improvement_limit=20, learning_rate=lr, betas=b)
-            print("For Fashion MNIST: latent dimensions", ld," learning rate: ",lr, " betas ",b)
+# latent_dim = [50, 75, 100]
+# learning_rate = [0.00025, 0.0003, 0.00035]
+# betas=[(0.5, .999),(0.75, .999),(0.999, .999)]
+#
+# for ld in latent_dim:
+#     for lr in learning_rate:
+#         for b in betas:
+#             print("\n****************\nnew hyperparemeters  ")
+#             print("For MNIST: latent dimensions", ld," learning rate: ",lr, " betas ",b)
+#             mnist_task_branch.create_and_train_VAE(num_epochs=30, hidden_dim=10, latent_dim=ld, is_synthetic=False,epoch_improvement_limit=20, learning_rate=lr, betas=b)
+#             print("For MNIST: latent dimensions", ld," learning rate: ",lr, " betas ",b)
+#
+#
+#             print("\nFor Fashion MNIST: latent dimensions", ld," learning rate: ",lr, " betas ",b)
+#             fashion_mnist_task_branch.create_and_train_VAE(num_epochs=30, hidden_dim=10, latent_dim=ld, is_synthetic=False,epoch_improvement_limit=20, learning_rate=lr, betas=b)
+#             print("For Fashion MNIST: latent dimensions", ld," learning rate: ",lr, " betas ",b)
 
 # establish classes
 # load data
