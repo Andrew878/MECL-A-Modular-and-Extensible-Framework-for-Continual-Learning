@@ -3,6 +3,8 @@ import torch
 #import torch.nn.sigmoid as sigmoid
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
+import Utils
 
 
 class Encoder(nn.Module):
@@ -114,6 +116,9 @@ class CVAE(nn.Module):
         '''
         super().__init__()
 
+        self.latent_dim = latent_dim
+        self.device = device
+        self.n_categories = n_categories
         self.encoder = Encoder(input_dim, hidden_dim, latent_dim, n_categories,num_channels, device).to(device)
         self.decoder = Decoder(input_dim, hidden_dim, latent_dim, n_categories,num_channels, device).to(device)
 
@@ -170,17 +175,42 @@ class CVAE(nn.Module):
         #print(KLD,"\n")
         return RCL + KLD
 
-    def generate random_sample(self,x, reconstructed_x, mean, log_var):
+    def get_sample_reconstruction_error_with_randomness(self, x, y):
+        reconstructed_x, z_mu, z_var = self.encode_then_decode_without_randomness(x,y)
+        loss = self.loss(x, reconstructed_x, z_mu, z_var)
+        return loss
 
-    z = torch.randn(1, LATENT_DIM).to(device)
-    y_1d = cat_tensor_list[y_int]
-    # because wierd labels for EMNIST
+    def generate_single_random_sample(self, category, is_random_cat = False):
 
-    y = idx2onehot(y_1d, n=N_CLASSES_OLD).to(device, dtype=z.dtype)
-    # z = torch.cat((z, y), dim=1)
+        z = torch.randn(1, self.latent_dim).to(self.device)
 
-    reconstructed_img = old_MINIST_model.decoder(z, y)
+        if is_random_cat:
+            # pick randomly 1 class, for which we want to generate the data
+            y_1d = torch.randint(0, self.n_categories, (1, 1)).to(dtype=torch.long)
+        else:
+            y_1d = torch.tensor(np.array([[category], ])).to(dtype=torch.long)
 
-    y = idx2onehot(y_1d, n=N_CLASSES).to(device, dtype=z.dtype)
-    # print(y)
-    img = reconstructed_img.view(28, 28).data
+        y = Utils.idx2onehot(y_1d, n=self.n_categories).to(self.device, dtype=z.dtype)
+
+        # don't need gradients
+        with torch.no_grad():
+            reconstructed_img = self.decoder(z, y)
+
+        img = reconstructed_img.view(28, 28).data
+        return img
+
+    def generate_synthetic_set_all_cats(self, number_per_category=1):
+        synthetic_data_list_x = []
+        synthetic_data_list_y = []
+
+        for n in range(0, number_per_category):
+            for category in range(0, self.n_categories):
+                img = self.generate_single_random_sample(category,is_random_cat=False)
+                synthetic_data_list_x.append(img)
+                synthetic_data_list_y.append(category)
+
+
+        return synthetic_data_list_x, synthetic_data_list_y
+
+
+    def

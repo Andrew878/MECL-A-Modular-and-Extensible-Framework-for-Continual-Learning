@@ -29,23 +29,42 @@ class TaskBranch:
         self.VAE_optimizer = None
         self.CNN_optimizer = None
 
-    def create_and_train_VAE(self, num_epochs=30, hidden_dim=10, latent_dim=75, is_synthetic=False,
+        self.synthetic_samples_for_reuse =[]
+
+    def create_and_train_VAE(self, num_epochs=30, batch_size = 64, hidden_dim=10, latent_dim=75, is_synthetic=False, is_take_existing_VAE=False, teacher_VAE = None, new_categories_to_add=0,
                              epoch_improvement_limit=20, learning_rate=0.0003, betas=(0.5, .999)):
 
-        # need to fix hidden dimensions
-        self.VAE_most_recent = CVAE.CVAE(self.dataset_interface.original_input_dimensions, hidden_dim, latent_dim,
+        self.synthetic_samples_for_reuse = []
+
+        # if not using a pre-trained VAE
+        if not is_take_existing_VAE:
+            # need to fix hidden dimensions
+            self.VAE_most_recent = CVAE.CVAE(self.dataset_interface.original_input_dimensions, hidden_dim, latent_dim,
                                          self.num_categories_in_task, self.dataset_interface.original_channel_number, self.device)
+
+        # if using a pre-trained VAE
+        else:
+            self.VAE_most_recent = copy.deepcopy(teacher_VAE).to(self.device)
+
+            # if adding a new task category to learn
+            if (new_categories_to_add != 0):
+                fc3 = nn.Linear(self.num_categories_in_task + new_categories_to_add, 1000)
+                fc2 = nn.Linear(self.num_categories_in_task + new_categories_to_add, 1000)
+                self.VAE_most_recent.update_y_layers(fc3, fc2)
+                self.VAE_most_recent.to(self.device)
+
+
         patience_counter = 0
         best_val_loss = 100000000000
         self.VAE_optimizer = torch.optim.Adam(self.VAE_most_recent.parameters(), lr=learning_rate, betas=betas)
 
-        dataloaders = self.dataset_interface.return_data_loaders('VAE', BATCH_SIZE=64)
+        dataloaders = self.dataset_interface.return_data_loaders('VAE', BATCH_SIZE=batch_size)
 
         start_timer = time.time()
         for epoch in range(num_epochs):
 
-            train_loss = self.run_a_VAE_epoch_calculate_loss(dataloaders['train'], is_train=True)
-            val_loss = self.run_a_VAE_epoch_calculate_loss(dataloaders['val'], is_train=False)
+            train_loss = self.run_a_VAE_epoch_calculate_loss(dataloaders['train'], is_train=True,is_synthetic = is_synthetic)
+            val_loss = self.run_a_VAE_epoch_calculate_loss(dataloaders['val'], is_train=False, is_synthetic = is_synthetic)
 
             train_loss /= self.dataset_interface.training_set_size
             val_loss /= self.dataset_interface.val_set_size
@@ -76,7 +95,7 @@ class TaskBranch:
         torch.cuda.empty_cache()
 
 
-    def run_a_VAE_epoch_calculate_loss(self, data_loader,is_train):
+    def run_a_VAE_epoch_calculate_loss(self, data_loader,is_train, teacher_VAE = None, is_synthetic = False):
 
         if is_train:
             self.VAE_most_recent.train()
@@ -94,6 +113,16 @@ class TaskBranch:
             # convert y into one-hot encoding
             y = Utils.idx2onehot(y.view(-1, 1), self.num_categories_in_task)
             y = y.to(self.device)
+
+            # get synthetic samples, and blend them into the batch
+            if is_synthetic:
+                synthetic_samples_x, synthetic_samples_y = teacher_VAE.generate_synthetic_set_all_cats(number_per_category=data_loader.batch_size)
+                self.synthetic_samples_for_resuse.append((synthetic_samples_x, synthetic_samples_y))
+
+                synthetic_samples_x.append(x)
+                x = torch.cat((tuple(synthetic_samples_x)), dim=0)
+                synthetic_samples_y.append(y)
+                y = torch.cat((tuple(synthetic_samples_y)), dim=0)
 
             # update the gradients to zero
             self.VAE_optimizer.zero_grad()
@@ -120,7 +149,6 @@ class TaskBranch:
 
 
 
-    def generate_synthetic_sample(self, category, ):
 
 
 
