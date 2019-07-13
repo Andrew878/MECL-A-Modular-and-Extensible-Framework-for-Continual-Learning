@@ -15,10 +15,12 @@ random.seed(manualSeed)
 torch.manual_seed(manualSeed)
 
 
-PATH_DATA_MNIST = "/cs/tmp/al278/MNIST"
-PATH_DATA_FashionMNIST = "/cs/tmp/al278/FashionMNIST"
-PATH_DATA_EMNIST = "/cs/tmp/al278/EMNIST"
-PATH_MODELS = "/cs/tmp/al278/proper/"
+PATH_ROOT = "/cs/tmp/al278/"
+PATH_ROOT = "/cs/scratch/al278/"
+PATH_DATA_MNIST = str(PATH_ROOT)+"MNIST"
+PATH_DATA_FashionMNIST = str(PATH_ROOT) + "FashionMNIST"
+PATH_DATA_EMNIST = str(PATH_ROOT) + "EMNIST"
+PATH_MODELS = str(PATH_ROOT) + "proper/"
 
 dataset_path_list = [(datasets.MNIST,PATH_DATA_MNIST),(datasets.FashionMNIST,PATH_DATA_FashionMNIST),(datasets.EMNIST,PATH_DATA_EMNIST)]
 
@@ -99,37 +101,92 @@ minist_data_and_interface = ds.DataSetAndInterface('MNIST', image_datasets_MNIST
 fashion_minist_data_and_interface = ds.DataSetAndInterface('FashionMNIST', image_datasets_FashionMNIST,PATH_DATA_FashionMNIST,all_transforms, image_channel_size_MNIST, image_height_MNIST)
 
 mnist_task_branch = task.TaskBranch('MNIST', minist_data_and_interface, PATH_MODELS)
-
-#mnist_task_branch.create_and_train_VAE()
-
 fashion_mnist_task_branch = task.TaskBranch('Fashion', fashion_minist_data_and_interface, PATH_MODELS)
 
-#fashion_mnist_task_branch.create_and_train_VAE()
+
+is_saving = True
+is_grid_search = False
+
+if is_saving:
+
+    EPOCHS = 1
+    BATCH = 64
+
+    print("Training MNIST CNN")
+    mnist_task_branch.create_and_train_CNN(model_id = "small temporary", num_epochs=EPOCHS, batch_size=BATCH,  is_frozen=False,
+                                           is_off_shelf_model=True, epoch_improvement_limit=20, learning_rate=0.00025,
+                                           betas=(0.999, .999), is_save=True)
+
+    print("Training Fashion MNIST CNN")
+    fashion_mnist_task_branch.create_and_train_CNN(model_id = "small temporary", num_epochs=EPOCHS, batch_size=BATCH,  is_frozen=False,
+                                                   is_off_shelf_model=True, epoch_improvement_limit=20, learning_rate=0.00025,
+                                                   betas=(0.999, .999), is_save=True)
+
+    EPOCHS = 2
+    ld = 50
+    b = (0.5,0.999)
+    lr = 0.00035
+
+    print("Training MNIST VAE")
+
+    mnist_task_branch.create_and_train_VAE(model_id = "small temporary", num_epochs=EPOCHS, hidden_dim=10, latent_dim=ld, is_synthetic=False,epoch_improvement_limit=20, learning_rate=lr, betas=b,is_save=True, batch_size=BATCH)
+    print("Training Fashion MNIST VAE")
+
+    fashion_mnist_task_branch.create_and_train_VAE(model_id = "small temporary", num_epochs=EPOCHS, hidden_dim=10, latent_dim=ld,  is_synthetic=False,epoch_improvement_limit=20, learning_rate=lr, betas=b, is_save=True,batch_size=BATCH)
+
+else:
+    print()
+    #
+    # mnist_task_branch.load_existing_VAE()
+    # mnist_task_branch.load_existing_CNN()
+    # fashion_mnist_task_branch.load_existing_VAE()
+    # fashion_mnist_task_branch.load_existing_CNN()
 
 
 
-mnist_task_branch.create_and_train_CNN(num_epochs=30, hidden_dim=10, latent_dim=75, is_frozen=True, is_off_shelf_model = True,
-                             epoch_improvement_limit=20, learning_rate=0.0003, betas=(0.999, .999))
 
-fashion_mnist_task_branch.create_and_train_CNN(num_epochs=30, hidden_dim=10, latent_dim=75, is_frozen=True, is_off_shelf_model = True,
-                             epoch_improvement_limit=20, learning_rate=0.0003, betas=(0.999, .999))
-
-# latent_dim = [50, 75, 100]
-# learning_rate = [0.00025, 0.0003, 0.00035]
-# betas=[(0.5, .999),(0.75, .999),(0.999, .999)]
+# fashion_mnist_task_branch.create_and_train_CNN(num_epochs=30, hidden_dim=10, latent_dim=75, is_frozen=True, is_off_shelf_model = True,
+#                              epoch_improvement_limit=20, learning_rate=0.0003, betas=(0.999, .999), is_save=True)
 #
-# for ld in latent_dim:
-#     for lr in learning_rate:
-#         for b in betas:
-#             print("\n****************\nnew hyperparemeters  ")
-#             print("For MNIST: latent dimensions", ld," learning rate: ",lr, " betas ",b)
-#             mnist_task_branch.create_and_train_VAE(num_epochs=30, hidden_dim=10, latent_dim=ld, is_synthetic=False,epoch_improvement_limit=20, learning_rate=lr, betas=b)
-#             print("For MNIST: latent dimensions", ld," learning rate: ",lr, " betas ",b)
+# mnist_task_branch.create_and_train_CNN(num_epochs=30, hidden_dim=10, latent_dim=75, is_frozen=True, is_off_shelf_model = True,
+#                              epoch_improvement_limit=20, learning_rate=0.0003, betas=(0.999, .999), is_save=True)
 #
 #
-#             print("\nFor Fashion MNIST: latent dimensions", ld," learning rate: ",lr, " betas ",b)
-#             fashion_mnist_task_branch.create_and_train_VAE(num_epochs=30, hidden_dim=10, latent_dim=ld, is_synthetic=False,epoch_improvement_limit=20, learning_rate=lr, betas=b)
-#             print("For Fashion MNIST: latent dimensions", ld," learning rate: ",lr, " betas ",b)
+
+if is_grid_search:
+    EPOCHS = 15
+    latent_dim = [50, 75, 100]
+    learning_rate = [0.00025, 0.0003, 0.00035]
+    betas=[(0.1, .999),(0.3, .999),(0.5, .999)]
+
+    for ld in latent_dim:
+        for lr in learning_rate:
+            for b in betas:
+                print("\n***************************************\nnew hyperparameters  ")
+                print("For MNIST: latent dimensions", ld," learning rate: ",lr, " betas ",b)
+                mnist_task_branch.create_and_train_VAE(num_epochs=EPOCHS, hidden_dim=10, latent_dim=ld, is_synthetic=False,epoch_improvement_limit=20, learning_rate=lr, betas=b,is_save=False)
+                print("For MNIST: latent dimensions", ld," learning rate: ",lr, " betas ",b)
+
+
+                print("\n\nFor Fashion MNIST: latent dimensions", ld," learning rate: ",lr, " betas ",b)
+                fashion_mnist_task_branch.create_and_train_VAE(num_epochs=EPOCHS, hidden_dim=10, latent_dim=ld, is_synthetic=False,epoch_improvement_limit=20, learning_rate=lr, betas=b, is_save=False)
+                print("For Fashion MNIST: latent dimensions", ld," learning rate: ",lr, " betas ",b)
+
+    learning_rate = [0.00025, 0.0003, 0.00035]
+    betas=[(0.2, .999),(0.5, .999),(0.999, .999)]
+    frozen_list = [True, False]
+
+    for lr in learning_rate:
+        for b in betas:
+            for frozen in frozen_list:
+                print("\n****************\nnew hyperparameters  ")
+                print("For MNIST: frozen?", frozen," learning rate: ",lr, " betas ",b)
+                mnist_task_branch.create_and_train_CNN(num_epochs=EPOCHS,  batch_size = 64,is_frozen=frozen, is_off_shelf_model = True, epoch_improvement_limit=20, learning_rate=lr, betas=b,is_save=False)
+                print("For MNIST: frozen?", frozen, " learning rate: ", lr, " betas ", b)
+
+                print("\nFor Fashion MNIST: frozen?", frozen, " learning rate: ", lr, " betas ", b)
+                fashion_mnist_task_branch.create_and_train_CNN(num_epochs=EPOCHS,  batch_size = 64,is_frozen=frozen, is_off_shelf_model = True, epoch_improvement_limit=20, learning_rate=lr, betas=b,is_save=False)
+                print("For Fashion MNIST: frozen?", frozen, " learning rate: ", lr, " betas ", b)
 
 # establish classes
 # load data

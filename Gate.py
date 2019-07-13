@@ -23,3 +23,4 @@ class Gate:
         self.task_branch_dictionary[new.task_name] = new
 
     def allocate_sample_to_task_branch(self, x):
+

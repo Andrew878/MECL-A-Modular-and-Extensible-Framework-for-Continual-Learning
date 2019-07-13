@@ -175,10 +175,62 @@ class CVAE(nn.Module):
         #print(KLD,"\n")
         return RCL + KLD
 
-    def get_sample_reconstruction_error_with_randomness(self, x, y):
-        reconstructed_x, z_mu, z_var = self.encode_then_decode_without_randomness(x,y)
+    def get_sample_reconstruction_error_from_single_category_without_randomness(self, x, y, is_random = False, is_already_single_tensor = True):
+
+        if not is_already_single_tensor:
+            y = torch.tensor(np.array([[y], ])).to(dtype=torch.long)
+
+        if is_random:
+            reconstructed_x, z_mu, z_var = self.forward(x,y)
+        else:
+            reconstructed_x, z_mu, z_var = self.encode_then_decode_without_randomness(x,y)
+
         loss = self.loss(x, reconstructed_x, z_mu, z_var)
         return loss
+
+    def get_sample_reconstruction_error_from_all_category(self, x, by_category_mean_std_of_reconstruction_error=None, is_random = False, only_return_best = True, is_standardised_distance_check = False):
+        class_with_best_fit = 0
+        lowest_error_of_cat = 10000000000
+        class_with_best_fit_std_dev = 0
+        lowest_error_of_cat_std_dev = 10000000000
+        list_by_cat = []
+
+        for category in range(0,self.n_categories):
+
+            loss= self.get_sample_reconstruction_error_from_single_category_without_randomness(x, category,is_random=False,is_already_single_tensor=False)
+
+
+            info_for_cat = (category, loss)
+
+            if (loss < lowest_error_of_cat):
+                lowest_error_of_cat = loss.item()
+                class_with_best_fit = category
+
+            if is_standardised_distance_check:
+                mean_cat = by_category_mean_std_of_reconstruction_error[category][0]
+                std_cat = by_category_mean_std_of_reconstruction_error[category][1]
+                std_error_distance = (loss.item() - mean_cat) / std_cat
+
+                if (std_error_distance < lowest_error_of_cat_std_dev):
+                    lowest_error_of_cat = std_error_distance
+                    class_with_best_fit_std_dev = category
+
+            info_for_cat = (info_for_cat, (category,std_error_distance))
+
+            list_by_cat.append(info_for_cat)
+
+
+        if only_return_best:
+
+            info = (class_with_best_fit, lowest_error_of_cat)
+            if is_standardised_distance_check:
+                return [info,(class_with_best_fit_std_dev,lowest_error_of_cat_std_dev)]
+
+
+            return [info]
+
+        else:
+            list_by_cat
 
     def generate_single_random_sample(self, category, is_random_cat = False):
 
@@ -210,6 +262,6 @@ class CVAE(nn.Module):
                 synthetic_data_list_y.append(category)
 
 
-        return synthetic_data_list_x, synthetic_data_list_y
+        return synthetic_data_list_x, synthetic_data_list_y,
 
 
