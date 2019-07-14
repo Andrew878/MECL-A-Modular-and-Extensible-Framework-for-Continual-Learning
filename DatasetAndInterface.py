@@ -17,6 +17,11 @@ class DataSetAndInterface:
         self.dataset = dataset
         self.path = path
         self.categories_list = dataset['train']['VAE'].classes
+
+        # The EMNIST class labels in the torchvision module are incorrect. This hack fixes it.
+        if(name == 'EMNIST'):
+            self.categories_list = [chr(i) for i in range(ord('a'), ord('z')+1)]
+
         self.num_categories = len(self.categories_list)
         self.transformations = transformations
         self.original_channel_number = original_channel_number
@@ -36,8 +41,8 @@ class DataSetAndInterface:
 
         dataloaders = {}
         for d_set in self.dataset_splits:
-
             dataloaders[d_set] = torch.utils.data.DataLoader(dataset_selected[d_set][branch_component], batch_size=BATCH_SIZE,shuffle=True, num_workers=num_workers)
+
 
         return dataloaders
 

@@ -81,6 +81,8 @@ class Decoder(nn.Module):
         self.deconv1 = nn.ConvTranspose2d(64, 32, 5, 1, 2)
         # self.bn2 = nn.BatchNorm2d(32)
         self.deconv2 = nn.ConvTranspose2d(32, num_channels, 5, 1, 2)
+        self.final_layer = nn.Sigmoid()
+
 
     def forward(self, x, labels):
         batch_size = x.size(0)
@@ -95,7 +97,7 @@ class Decoder(nn.Module):
         # x = self.bn2(x)
         x = F.relu(x)
         x = self.deconv2(x)
-        x = F.sigmoid(x)
+        x = self.final_layer(x)
         return x
 
     def update_y_layer(self, new_layer):
@@ -167,7 +169,7 @@ class CVAE(nn.Module):
 
     def loss(self,x, reconstructed_x, mean, log_var):
         # reconstruction loss
-        RCL = F.binary_cross_entropy(reconstructed_x, x, size_average=False)
+        RCL = F.binary_cross_entropy(reconstructed_x, x, reduction='sum')
         # kl divergence loss
         KLD = -0.5 * torch.sum(1 + log_var - mean.pow(2) - log_var.exp())
 
@@ -180,10 +182,14 @@ class CVAE(nn.Module):
         if not is_already_single_tensor:
             y = torch.tensor(np.array([[y], ])).to(dtype=torch.long)
 
+
+        x = x.to(self.device)
+        y = Utils.idx2onehot(y, self.n_categories).to(self.device, dtype=x.dtype)
+
         if is_random:
             reconstructed_x, z_mu, z_var = self.forward(x,y)
         else:
-            reconstructed_x, z_mu, z_var = self.encode_then_decode_without_randomness(x,y)
+            reconstructed_x, z_mu, z_var = self.encode_then_decode_without_randomness(x,y.float())
 
         loss = self.loss(x, reconstructed_x, z_mu, z_var)
         return loss
@@ -212,10 +218,10 @@ class CVAE(nn.Module):
                 std_error_distance = (loss.item() - mean_cat) / std_cat
 
                 if (std_error_distance < lowest_error_of_cat_std_dev):
-                    lowest_error_of_cat = std_error_distance
+                    lowest_error_of_cat_std_dev = std_error_distance
                     class_with_best_fit_std_dev = category
 
-            info_for_cat = (info_for_cat, (category,std_error_distance))
+                info_for_cat = (info_for_cat, (category,std_error_distance))
 
             list_by_cat.append(info_for_cat)
 
@@ -242,7 +248,7 @@ class CVAE(nn.Module):
         else:
             y_1d = torch.tensor(np.array([[category], ])).to(dtype=torch.long)
 
-        y = Utils.idx2onehot(y_1d, n=self.n_categories).to(self.device, dtype=z.dtype)
+        y = Utils.idx2onehot(y_1d, self.n_categories).to(self.device, dtype=z.dtype)
 
         # don't need gradients
         with torch.no_grad():
