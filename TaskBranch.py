@@ -8,6 +8,7 @@ from torchvision import models
 import torch.nn as nn
 import numpy as np
 import mpu
+import CustomDataSetAndLoaderForSynthetic
 
 
 class TaskBranch:
@@ -29,16 +30,26 @@ class TaskBranch:
         self.VAE_optimizer = None
         self.CNN_optimizer = None
 
-        self.synthetic_samples_for_reuse = {'train':[], 'val':[]}
+        self.dataset_splits = self.dataset_interface.dataset_splits
         self.by_category_record_of_reconstruction_error = None
         self.by_category_mean_std_of_reconstruction_error = None
         self.has_VAE_changed_since_last_mean_std_measurements = True
 
-    def create_and_train_VAE(self, model_id, num_epochs=30, batch_size=64, hidden_dim=10, latent_dim=75,
-                             is_synthetic=False, is_take_existing_VAE=False, teacher_VAE=None, new_categories_to_add_to_existing_task = [], is_completely_new_task = False,
-                             epoch_improvement_limit=20, learning_rate=0.00035, betas=(0.5, .999), is_save=False,):
+        self.mutated_count = 0
 
-        self.synthetic_samples_for_reuse = []
+    def refresh_variables_for_mutated_task(self):
+        self.mutated_count += 1
+        self.num_categories_in_task = self.dataset_interface.num_categories
+        print("num cat 2",self.num_categories_in_task)
+        self.categories_list = self.dataset_interface.categories_list
+        self.by_category_record_of_reconstruction_error = None
+        self.by_category_mean_std_of_reconstruction_error = None
+
+
+    def create_and_train_VAE(self, model_id, num_epochs=30, batch_size=64, hidden_dim=10, latent_dim=50,
+                             is_synthetic=False, is_take_existing_VAE=False, teacher_VAE=None,
+                             is_new_categories_to_addded_to_existing_task= False, is_completely_new_task=False,
+                             epoch_improvement_limit=30, learning_rate=0.00035, betas=(0.5, .999), is_save=False, ):
 
         # if not using a pre-trained VAE, create new VAE
         if not is_take_existing_VAE:
@@ -51,25 +62,30 @@ class TaskBranch:
             self.VAE_most_recent = copy.deepcopy(teacher_VAE).to(self.device)
 
             # if adding a new task category to learn
-            if (is_completely_new_task or len(new_categories_to_add_to_existing_task) != 0):
-                fc3 = nn.Linear(self.num_categories_in_task + len(new_categories_to_add_to_existing_task), 1000)
-                fc2 = nn.Linear(self.num_categories_in_task + len(new_categories_to_add_to_existing_task), 1000)
+            if (is_completely_new_task or is_new_categories_to_addded_to_existing_task):
+                fc3 = nn.Linear(self.num_categories_in_task, 1000)
+                fc2 = nn.Linear(self.num_categories_in_task, 1000)
+
+                # update CVAE class parameters
                 self.VAE_most_recent.update_y_layers(fc3, fc2)
+                self.VAE_most_recent.n_categories = self.num_categories_in_task
                 self.VAE_most_recent.to(self.device)
 
         patience_counter = 0
         best_val_loss = 100000000000
         self.VAE_optimizer = torch.optim.Adam(self.VAE_most_recent.parameters(), lr=learning_rate, betas=betas)
 
-        if (len(new_categories_to_add_to_existing_task) == 0):
-            dataloaders = self.dataset_interface.return_data_loaders('VAE', BATCH_SIZE=batch_size)
-        else:
-            dataloaders = self.dataset_interface.obtain_dataloader_with_subset_of_categories('VAE', new_categories_to_add_to_existing_task, BATCH_SIZE=batch_size)
-
+        #if (not is_new_categories_to_addded_to_existing_task):
+        dataloaders = self.dataset_interface.return_data_loaders('VAE', BATCH_SIZE=batch_size)
+        #else:
+         #   dataloaders = self.dataset_interface.obtain_dataloader_with_subset_of_categories('VAE',
+          #                                                                                   new_categories_to_add_to_existing_task,
+           #                                                                                  BATCH_SIZE=batch_size)
 
         start_timer = time.time()
         for epoch in range(num_epochs):
 
+            # fix epochs
             train_loss = self.run_a_VAE_epoch_calculate_loss(dataloaders['train'], is_train=True,
                                                              is_synthetic=is_synthetic)
             val_loss = self.run_a_VAE_epoch_calculate_loss(dataloaders['val'], is_train=False,
@@ -101,16 +117,17 @@ class TaskBranch:
 
         self.VAE_most_recent.load_state_dict(best_model_wts)
 
-        model_string = "VAE "+ self.task_name +" epochs" + str(num_epochs) + ",batch" + str(batch_size) + ",z_d" + str(
+        model_string = "VAE " + self.task_name + " epochs" + str(num_epochs) + ",batch" + str(
+            batch_size) + ",z_d" + str(
             latent_dim) + ",synth" + str(is_synthetic) + ",rebuilt" + str(is_take_existing_VAE) + ",lr" + str(
-            learning_rate) + ",betas" + str(betas) + "lowest_error "+str(best_val_loss)+" "
+            learning_rate) + ",betas" + str(betas) + "lowest_error " + str(best_val_loss) + " "
         model_string += model_id
-
 
         if is_save:
             torch.save(self.VAE_most_recent, self.initial_directory_path + model_string)
 
-        self.obtain_VAE_recon_error_mean_and_std_per_class(self.initial_directory_path + model_string)
+        #REMOVE COMMENT
+       # self.obtain_VAE_recon_error_mean_and_std_per_class(self.initial_directory_path + model_string)
 
         self.VAE_most_recent.cpu()
         torch.cuda.empty_cache()
@@ -134,22 +151,29 @@ class TaskBranch:
                 cat_record = self.by_category_record_of_reconstruction_error[y.item()]
 
             # convert y into one-hot encoding
+            y_original = y
+            #print(y)
             y = Utils.idx2onehot(y.view(-1, 1), self.num_categories_in_task)
             y = y.to(self.device)
 
             # get synthetic samples, and blend them into the batch
-            if is_synthetic and teacher_VAE != None:
-                synthetic_samples_x, synthetic_samples_y = teacher_VAE.generate_synthetic_set_all_cats(
-                    number_per_category=data_loader.batch_size)
-                if(is_train):
-                    self.synthetic_samples_for_resuse['train'].append((synthetic_samples_x, synthetic_samples_y))
-                else:
-                    self.synthetic_samples_for_resuse['val'].append((synthetic_samples_x, synthetic_samples_y))
-
-                synthetic_samples_x.append(x)
-                x = torch.cat((tuple(synthetic_samples_x)), dim=0).to(self.device)
-                synthetic_samples_y.append(y)
-                y = torch.cat((tuple(synthetic_samples_y)), dim=0).to(self.device)
+            # if is_synthetic and teacher_VAE != None:
+            #
+            #     # FIX EPOCHSSSS
+            #
+            #     if (is_train):
+            #         set = 'train'
+            #     else:
+            #         set = 'val'
+            #
+            #     synthetic_samples_x, synthetic_samples_y = teacher_VAE.generate_synthetic_set_all_cats(
+            #         synthetic_data_list_unique_label=self.synthetic_samples_for_reuse[set],
+            #         number_per_category=data_loader.batch_size, batch_number=i, epoch_number=0)
+            #
+            #     synthetic_samples_x.append(x)
+            #     x = torch.cat((tuple(synthetic_samples_x)), dim=0).to(self.device)
+            #     synthetic_samples_y.append(y)
+            #     y = torch.cat((tuple(synthetic_samples_y)), dim=0).to(self.device)
 
             # update the gradients to zero
             if is_train:
@@ -176,22 +200,13 @@ class TaskBranch:
 
     # def generate_synthetic_batch(self, batch_size = 64):
 
-    def load_existing_VAE(self, PATH, is_calculate_mean_std = False):
+    def load_existing_VAE(self, PATH, is_calculate_mean_std=False):
         self.VAE_most_recent = torch.load(PATH)
         if is_calculate_mean_std:
-            print(self.task_name," - Loaded VAE model, now calculating reconstruction error mean, std")
+            print(self.task_name, " - Loaded VAE model, now calculating reconstruction error mean, std")
             self.obtain_VAE_recon_error_mean_and_std_per_class(PATH)
         else:
-            self.by_category_mean_std_of_reconstruction_error = mpu.io.read(PATH+"mean,std.pickle")
-
-    def load_existing_VAE(self, PATH, is_calculate_mean_std = False):
-        self.VAE_most_recent = torch.load(PATH)
-        if is_calculate_mean_std:
-            print(self.task_name," - Loaded VAE model, now calculating reconstruction error mean, std")
-            self.obtain_VAE_recon_error_mean_and_std_per_class(PATH)
-        else:
-            self.by_category_mean_std_of_reconstruction_error = mpu.io.read(PATH+"mean,std.pickle")
-
+            self.by_category_mean_std_of_reconstruction_error = mpu.io.read(PATH + "mean,std.pickle")
 
     def create_and_train_CNN(self, model_id, num_epochs=30, batch_size=64, is_frozen=False, is_off_shelf_model=False,
                              epoch_improvement_limit=20, learning_rate=0.0003, betas=(0.999, .999), is_save=False):
@@ -273,7 +288,7 @@ class TaskBranch:
         if is_save:
             model_string = "CNN " + self.task_name + " epochs" + str(num_epochs) + ",batch" + str(
                 batch_size) + ",pretrained" + str(is_off_shelf_model) + ",frozen" + str(is_frozen) + ",lr" + str(
-                learning_rate) + ",betas" + str(betas) +" accuracy "+str(best_val_acc) + " "
+                learning_rate) + ",betas" + str(betas) + " accuracy " + str(best_val_acc) + " "
             model_string += model_id
 
             torch.save(self.CNN_most_recent, self.initial_directory_path + model_string)
@@ -281,7 +296,7 @@ class TaskBranch:
         self.CNN_most_recent.cpu()
         torch.cuda.empty_cache()
 
-    def obtain_VAE_recon_error_mean_and_std_per_class(self, VAE_MODEL_PATH = None):
+    def obtain_VAE_recon_error_mean_and_std_per_class(self, VAE_MODEL_PATH=None):
 
         print("Updating VAE record means, standard deviations...")
 
@@ -299,14 +314,14 @@ class TaskBranch:
             std = np.asarray(self.by_category_record_of_reconstruction_error[cat]).std(axis=0)
             self.by_category_mean_std_of_reconstruction_error[cat] = (mean, std)
 
-        mpu.io.write(VAE_MODEL_PATH+"mean,std.pickle", self.by_category_mean_std_of_reconstruction_error)
+        mpu.io.write(VAE_MODEL_PATH + "mean,std.pickle", self.by_category_mean_std_of_reconstruction_error)
 
-
-    #def
+    # def
 
     def given_observation_find_lowest_reconstruction_error(self, x, is_standardised_distance_check=True):
 
-        return self.VAE_most_recent.get_sample_reconstruction_error_from_all_category(x,self.by_category_mean_std_of_reconstruction_error,
+        return self.VAE_most_recent.get_sample_reconstruction_error_from_all_category(x,
+                                                                                      self.by_category_mean_std_of_reconstruction_error,
                                                                                       is_random=False,
                                                                                       only_return_best=True,
                                                                                       is_standardised_distance_check=is_standardised_distance_check)
@@ -332,7 +347,8 @@ class TaskBranch:
             # x = x.view(batch_size, 1, 28, 28)
             x = x.to(self.device)
             y = y.to(self.device)
-            # print(x.size())
+            #print(y.size())
+            #print(y)
 
             # convert y into one-hot encoding
             # y_one_hot = Utils.idx2onehot(y.view(-1, 1), self.num_categories_in_task)
@@ -371,3 +387,35 @@ class TaskBranch:
             max_value, preds = torch.max(output, 1)
 
         return preds
+
+    def create_blended_dataset_with_synthetic_samples(self, new_real_datasetInterface,new_categories_to_add_to_existing_task):
+
+        synthetic_cat_number = len(self.categories_list)
+        self.categories_list.extend(new_categories_to_add_to_existing_task)
+        print(self.categories_list)
+        self.synthetic_samples_for_reuse = {i: [] for i in self.dataset_splits}
+
+        original_cat_index_to_new_cat_index_dict = {new_real_datasetInterface.label_to_index_dict[new_cat_label]:self.categories_list.index(new_cat_label) for new_cat_label in new_categories_to_add_to_existing_task}
+        print(original_cat_index_to_new_cat_index_dict )
+
+        blended_dataset = {split: {} for split in self.dataset_splits}
+
+        for model in ['VAE', 'CNN']:
+
+            subset_dataset_real = new_real_datasetInterface.obtain_dataset_with_subset_of_categories(model,
+                                                                                                     new_categories_to_add_to_existing_task)
+
+            for split in self.dataset_splits:
+                size_per_class = len(subset_dataset_real[split][model]) // len(new_categories_to_add_to_existing_task)
+
+
+                _, _ = self.VAE_most_recent.generate_synthetic_set_all_cats(
+                    synthetic_data_list_unique_label=self.synthetic_samples_for_reuse[split],
+                    number_per_category=size_per_class, is_store_on_CPU = True)
+
+                blended_dataset[split][model] = CustomDataSetAndLoaderForSynthetic.SyntheticDS(
+                    self.synthetic_samples_for_reuse[split], self.dataset_interface.transformations[model][split],subset_dataset_real[split][model],self.categories_list, synthetic_cat_number, original_cat_index_to_new_cat_index_dict)
+
+
+        self.dataset_interface.update_data_set(blended_dataset)
+        self.refresh_variables_for_mutated_task()

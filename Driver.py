@@ -17,8 +17,8 @@ random.seed(manualSeed)
 torch.manual_seed(manualSeed)
 
 
-PATH_ROOT = "/cs/tmp/al278/"
 PATH_ROOT = "/cs/scratch/al278/"
+PATH_ROOT = "/cs/tmp/al278/"
 PATH_DATA_MNIST = str(PATH_ROOT)+"MNIST"
 PATH_DATA_FashionMNIST = str(PATH_ROOT) + "FashionMNIST"
 PATH_DATA_EMNIST = str(PATH_ROOT) + "EMNIST"
@@ -120,10 +120,10 @@ emnist_task_branch = task.TaskBranch('EMNIST', emnist_data_and_interface, device
 
 
 is_saving = False
+label = "v2"
 is_grid_search = False
 BATCH = 128
-EPOCHS = 2
-label = "small temporary"
+EPOCHS = 200
 ld = 50
 b = (0.5, 0.999)
 lr = 0.00035
@@ -132,71 +132,79 @@ if is_saving:
     BATCH = 128
 
 
-    EPOCHS = 50
-    print("Training MNIST CNN")
-    mnist_task_branch.create_and_train_CNN(model_id = "small temporary", num_epochs=EPOCHS, batch_size=BATCH,  is_frozen=False,
-                                           is_off_shelf_model=True, epoch_improvement_limit=20, learning_rate=0.00025,
-                                           betas=(0.999, .999), is_save=True)
+    # EPOCHS = 50
+    # print("Training MNIST CNN")
+    # mnist_task_branch.create_and_train_CNN(model_id = "small temporary", num_epochs=EPOCHS, batch_size=BATCH,  is_frozen=False,
+    #                                        is_off_shelf_model=True, epoch_improvement_limit=20, learning_rate=0.00025,
+    #                                        betas=(0.999, .999), is_save=True)
+    #
+    # print("Training Fashion MNIST CNN")
+    # fashion_mnist_task_branch.create_and_train_CNN(model_id = "small temporary", num_epochs=EPOCHS, batch_size=BATCH,  is_frozen=False,
+    #                                                is_off_shelf_model=True, epoch_improvement_limit=20, learning_rate=0.00025,
+    #                                                betas=(0.999, .999), is_save=True)
 
-    print("Training Fashion MNIST CNN")
-    fashion_mnist_task_branch.create_and_train_CNN(model_id = "small temporary", num_epochs=EPOCHS, batch_size=BATCH,  is_frozen=False,
-                                                   is_off_shelf_model=True, epoch_improvement_limit=20, learning_rate=0.00025,
-                                                   betas=(0.999, .999), is_save=True)
-
-    EPOCHS = 200
+    EPOCHS = 600
     ld = 50
     b = (0.5,0.999)
     lr = 0.00035
 
-
     print("Training MNIST VAE")
-    mnist_task_branch.create_and_train_VAE(model_id = label, num_epochs=EPOCHS, hidden_dim=10, latent_dim=ld, is_synthetic=False,epoch_improvement_limit=20, learning_rate=lr, betas=b,is_save=True, batch_size=BATCH)
+    mnist_task_branch.create_and_train_VAE(model_id = label, num_epochs=EPOCHS, hidden_dim=10, latent_dim=ld, is_synthetic=False,epoch_improvement_limit=50, learning_rate=lr, betas=b,is_save=True, batch_size=BATCH)
 
     print("Training Fashion MNIST VAE")
-    fashion_mnist_task_branch.create_and_train_VAE(model_id = label, num_epochs=EPOCHS, hidden_dim=10, latent_dim=ld,  is_synthetic=False,epoch_improvement_limit=20, learning_rate=lr, betas=b, is_save=True,batch_size=BATCH)
-
+    fashion_mnist_task_branch.create_and_train_VAE(model_id = label, num_epochs=EPOCHS, hidden_dim=10, latent_dim=ld,  is_synthetic=False,epoch_improvement_limit=50, learning_rate=lr, betas=b, is_save=True,batch_size=BATCH)
 
 else:
 
     is_update_mean_std = False
-    mnist_task_branch.load_existing_VAE(PATH_MODELS+"VAE MNIST epochs2,batch128,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 103.83423990478515 small temporary",is_update_mean_std)
-    fashion_mnist_task_branch.load_existing_VAE(PATH_MODELS+"VAE Fashion epochs2,batch128,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 251.8411532714844 small temporary", is_update_mean_std)
+    fashion_mnist_task_branch.load_existing_VAE(PATH_MODELS+"VAE Fashion epochs400,batch128,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 233.7498068359375 v2", is_update_mean_std)
+    mnist_task_branch.load_existing_VAE(PATH_MODELS+"VAE MNIST epochs400,batch128,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 88.00115422363281 v2",is_update_mean_std)
+
     mnist_task_branch.load_existing_CNN(
         PATH_MODELS + "CNN MNIST epochs50,batch128,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) v1")
     fashion_mnist_task_branch.load_existing_CNN(
         PATH_MODELS + "CNN Fashion epochs50,batch128,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) v1")
 
+
 task_branch_list = [mnist_task_branch,fashion_mnist_task_branch]
 gate = Gate.Gate()
 
-print("New Task in new VAE: Pre-trained versus no pre-training")
-Utils.test_pre_trained_versus_non_pre_trained(emnist_task_branch,mnist_task_branch,model_id = label, num_epochs=EPOCHS, batch_size=BATCH, hidden_dim=10, latent_dim=ld, epoch_improvement_limit=20, learning_rate=lr, betas=b, is_save=False)
+i =1
+for list in [['a','b'],['c','d'],['e','f'],['g','h'],['i','j']]:
+
+    mnist_task_branch.create_blended_dataset_with_synthetic_samples(emnist_data_and_interface,list)
+    print("\nTraining VAE for ",list)
+    name= "mutation"+str(i)
+    mnist_task_branch.create_and_train_VAE( model_id=name, num_epochs=30, batch_size=64, hidden_dim=10, latent_dim=50,
+                                 is_synthetic=False, is_take_existing_VAE=True, teacher_VAE=mnist_task_branch.VAE_most_recent,
+                                 is_new_categories_to_addded_to_existing_task=True, is_completely_new_task=False,
+                                 epoch_improvement_limit=30, learning_rate=0.00035, betas=(0.5, .999), is_save=False, )
+
+    print("\nTraining CNN for ",list)
+
+    BATCH = 64
+    mnist_task_branch.create_and_train_CNN(model_id = name, num_epochs=15, batch_size=BATCH,  is_frozen=False,
+                                           is_off_shelf_model=True, epoch_improvement_limit=20, learning_rate=0.00025,
+                                           betas=(0.999, .999), is_save=True)
+    i +=1
 
 #emnist_task_branch.create_and_train_VAE(model_id = label, num_epochs=EPOCHS, batch_size=BATCH, hidden_dim=10, latent_dim=ld, is_synthetic=False, is_take_existing_VAE=True, teacher_VAE=mnist_task_branch.VAE_most_recent, new_categories_to_add_to_existing_task= [], is_completely_new_task=True, epoch_improvement_limit=20, learning_rate=lr, betas=b, is_save=True)
 
-do_proven_tests = False
+do_proven_tests = True
 
 if do_proven_tests:
+
+    print("Generation, Classification")
+    Utils.test_generating_and_classification_ability_multi_tasks(task_branch_list, number_per_category=10, device=device)
+
+
+    print("New Task in new VAE: Pre-trained versus no pre-training")
+    Utils.test_pre_trained_versus_non_pre_trained(emnist_task_branch, mnist_task_branch, model_id=label,
+                                                  num_epochs=EPOCHS, batch_size=BATCH, hidden_dim=10, latent_dim=ld,
+                                                  epoch_improvement_limit=20, learning_rate=lr, betas=b, is_save=False)
     print("Gate Allocation")
     gate.add_task_branch(mnist_task_branch,fashion_mnist_task_branch)
     Utils.test_gate_allocation(gate, mnist_data_and_interface,fashion_mnist_data_and_interface, number_tests_per_data_set=10000)
-
-    print("Generation, Classification")
-    Utils.test_generating_and_classification_ability_multi_tasks(task_branch_list, number_per_category=10000, device=device)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 if is_grid_search:
     EPOCHS = 15

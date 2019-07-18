@@ -201,6 +201,9 @@ class CVAE(nn.Module):
         lowest_error_of_cat_std_dev = 10000000000
         list_by_cat = []
 
+        self.encoder.to(self.device)
+        self.decoder.to(self.device)
+
         for category in range(0,self.n_categories):
 
             loss= self.get_sample_reconstruction_error_from_single_category_without_randomness(x, category,is_random=False,is_already_single_tensor=False)
@@ -225,6 +228,8 @@ class CVAE(nn.Module):
 
             list_by_cat.append(info_for_cat)
 
+        self.encoder.cpu()
+        self.decoder.cpu()
 
         if only_return_best:
 
@@ -236,7 +241,7 @@ class CVAE(nn.Module):
             return [info]
 
         else:
-            list_by_cat
+            return list_by_cat
 
     def generate_single_random_sample(self, category, is_random_cat = False):
 
@@ -257,17 +262,32 @@ class CVAE(nn.Module):
         img = reconstructed_img.view(28, 28).data
         return img
 
-    def generate_synthetic_set_all_cats(self, number_per_category=1):
+    def generate_synthetic_set_all_cats(self, synthetic_data_list_unique_label = None, number_per_category=1, is_store_on_CPU = False):
         synthetic_data_list_x = []
         synthetic_data_list_y = []
+
+        self.encoder.to(self.device)
+        self.decoder.to(self.device)
+
 
         for n in range(0, number_per_category):
             for category in range(0, self.n_categories):
                 img = self.generate_single_random_sample(category,is_random_cat=False)
+
+                if(is_store_on_CPU):
+                    img = img.cpu()
                 synthetic_data_list_x.append(img)
                 synthetic_data_list_y.append(category)
 
+                # give the sample a unique ID
+                if synthetic_data_list_unique_label != None:
+                    synthetic_data_list_unique_label.append((img, category))
 
-        return synthetic_data_list_x, synthetic_data_list_y,
+                    #["syn" + str(n) + str(category) + str(batch_number) + str(epoch_number)]
 
+
+        self.encoder.cpu()
+        self.decoder.cpu()
+
+        return synthetic_data_list_x, synthetic_data_list_y
 
