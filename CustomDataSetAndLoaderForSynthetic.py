@@ -27,13 +27,16 @@ class SyntheticDS(Dataset):
         self.is_make_dim_adjustment_for_resnet = False
         self.original_cat_index_to_new_cat_index_dict = original_cat_index_to_new_cat_index_dict
 
+        self.freq_check = {i:0 for i in range(0,30)}
+        self.freq = 0
+
     # You must override __getitem__ and __len__
     def __getitem__(self, new_index):
         """ Get a sample from either the synthetic dataset, or the real data dataset
         """
         original_index, real_or_fake = self.index_key[new_index]
 
-
+        self.freq += 1
         #print("original_index",original_index, "real_or_fake ",real_or_fake)
 
 
@@ -41,21 +44,20 @@ class SyntheticDS(Dataset):
             #print("here 1")
             image, category = self.synthetic_data_list_unique_label[original_index]
 
-
+            self.freq_check[category] += 1
             # NEED TO FIX
 
             image = image.to(dtype=torch.float).cpu()
             # this adjustment is because resnet requires particular dimensions as input
             if not self.is_make_dim_adjustment_for_resnet:
-                category = [new_index]
+                #if(category==10):
+                    #print("category 10 found")
+                category = [category]
                 category = torch.tensor(np.array([category, ])).to(dtype=torch.long).cpu()
             else:
                 #print("reached")
                 image_pil = transforms.ToPILImage()(image)
                 image = self.transforms(image_pil)
-
-
-
 
         elif (real_or_fake == 'real'):
             #print("here 2")
@@ -66,6 +68,7 @@ class SyntheticDS(Dataset):
 
             category = self.original_cat_index_to_new_cat_index_dict[old_category]
 
+            self.freq_check[category] += 1
 
             # for VAE we only want sample one of one (this aligns dimensions from c to [28,28]
             # for CNN we want to maintain the three channels, i.e. so desired inputs are [3,224,224] (224 because of resizing transform)
@@ -78,6 +81,9 @@ class SyntheticDS(Dataset):
 
 
 
+
+        if self.freq%10000==0:
+            print(self.freq, self.freq_check)
         #print(real_or_fake, image.size(), category)#, image.type(), category,category.size(),  category.type(), category)
 
         return image, category

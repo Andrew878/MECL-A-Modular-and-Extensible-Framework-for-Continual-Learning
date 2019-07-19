@@ -57,6 +57,7 @@ class TaskBranch:
             self.VAE_most_recent = CVAE.CVAE(self.dataset_interface.original_input_dimensions, hidden_dim, latent_dim,
                                              self.num_categories_in_task,
                                              self.dataset_interface.original_channel_number, self.device)
+            print("create new VAE to handle ",self.num_categories_in_task, self.categories_list, )
         # if using a pre-trained VAE
         else:
             self.VAE_most_recent = copy.deepcopy(teacher_VAE).to(self.device)
@@ -152,6 +153,7 @@ class TaskBranch:
 
             # convert y into one-hot encoding
             y_original = y
+            #print("going into one hot")
             #print(y)
             y = Utils.idx2onehot(y.view(-1, 1), self.num_categories_in_task)
             y = y.to(self.device)
@@ -202,11 +204,13 @@ class TaskBranch:
 
     def load_existing_VAE(self, PATH, is_calculate_mean_std=False):
         self.VAE_most_recent = torch.load(PATH)
-        if is_calculate_mean_std:
-            print(self.task_name, " - Loaded VAE model, now calculating reconstruction error mean, std")
-            self.obtain_VAE_recon_error_mean_and_std_per_class(PATH)
-        else:
-            self.by_category_mean_std_of_reconstruction_error = mpu.io.read(PATH + "mean,std.pickle")
+
+        # REMOVE COMMENTS!!!!!
+        # if is_calculate_mean_std:
+        #     print(self.task_name, " - Loaded VAE model, now calculating reconstruction error mean, std")
+        #     self.obtain_VAE_recon_error_mean_and_std_per_class(PATH)
+        # else:
+        #     self.by_category_mean_std_of_reconstruction_error = mpu.io.read(PATH + "mean,std.pickle")
 
     def create_and_train_CNN(self, model_id, num_epochs=30, batch_size=64, is_frozen=False, is_off_shelf_model=False,
                              epoch_improvement_limit=20, learning_rate=0.0003, betas=(0.999, .999), is_save=False):
@@ -224,6 +228,7 @@ class TaskBranch:
             num_ftrs = self.CNN_most_recent.fc.in_features
 
             # create a new fully connected final layer for training
+            #print("self.num_categories_in_task", self.num_categories_in_task)
             self.CNN_most_recent.fc = nn.Linear(num_ftrs, self.num_categories_in_task)
 
             if is_frozen == True:
@@ -270,11 +275,11 @@ class TaskBranch:
                 # send to CPU to save on GPU RAM
                 best_model_wts = copy.deepcopy(self.CNN_most_recent.state_dict())
                 print(f'Epoch {epoch}, Train Acc: {train_acc:.4f}, Val Acc: {val_acc:.4f} ', time_elapsed,
-                      "**** new best ****")
+                      "**** new best ****",correct_guesses_train,self.dataset_interface.training_set_size,correct_guesses_val,self.dataset_interface.val_set_size)
 
 
             else:
-                print(f'Epoch {epoch}, Train Acc: {train_acc:.4f}, Val Acc: {val_acc:.4f} ', time_elapsed)
+                print(f'Epoch {epoch}, Train Acc: {train_acc:.4f}, Val Acc: {val_acc:.4f} ', time_elapsed,correct_guesses_train,self.dataset_interface.training_set_size,correct_guesses_val,self.dataset_interface.val_set_size)
                 patience_counter += 1
 
             if patience_counter > epoch_improvement_limit:
@@ -362,9 +367,11 @@ class TaskBranch:
             with torch.set_grad_enabled(is_train):
                 outputs = self.CNN_most_recent(x)
                 _, preds = torch.max(outputs, 1)
+                #print(preds)
                 loss = criterion(outputs.to(self.device), y)
 
             # loss
+            #print(loss)
             loss_sum += loss.item()
             running_corrects += torch.sum(preds == y.data)
 
@@ -380,11 +387,14 @@ class TaskBranch:
 
     def classify_with_CNN(self, x, is_output_one_hot=False):
 
+        self.CNN_most_recent.to(self.device)
+        x = x.to(self.device)
         output = self.CNN_most_recent(x)
         preds = output
 
         if not is_output_one_hot:
             max_value, preds = torch.max(output, 1)
+
 
         return preds
 
@@ -406,12 +416,16 @@ class TaskBranch:
                                                                                                      new_categories_to_add_to_existing_task)
 
             for split in self.dataset_splits:
+                size_per_class = 1
                 size_per_class = len(subset_dataset_real[split][model]) // len(new_categories_to_add_to_existing_task)
+                self.synthetic_samples_for_reuse[split] = []
 
 
                 _, _ = self.VAE_most_recent.generate_synthetic_set_all_cats(
                     synthetic_data_list_unique_label=self.synthetic_samples_for_reuse[split],
                     number_per_category=size_per_class, is_store_on_CPU = True)
+                print("SYN AND REAL model",model,"split",split, "size per class", size_per_class)
+
 
                 blended_dataset[split][model] = CustomDataSetAndLoaderForSynthetic.SyntheticDS(
                     self.synthetic_samples_for_reuse[split], self.dataset_interface.transformations[model][split],subset_dataset_real[split][model],self.categories_list, synthetic_cat_number, original_cat_index_to_new_cat_index_dict)

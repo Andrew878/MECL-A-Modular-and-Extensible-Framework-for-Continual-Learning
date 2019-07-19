@@ -132,16 +132,16 @@ if is_saving:
     BATCH = 128
 
 
-    # EPOCHS = 50
-    # print("Training MNIST CNN")
-    # mnist_task_branch.create_and_train_CNN(model_id = "small temporary", num_epochs=EPOCHS, batch_size=BATCH,  is_frozen=False,
-    #                                        is_off_shelf_model=True, epoch_improvement_limit=20, learning_rate=0.00025,
-    #                                        betas=(0.999, .999), is_save=True)
-    #
-    # print("Training Fashion MNIST CNN")
-    # fashion_mnist_task_branch.create_and_train_CNN(model_id = "small temporary", num_epochs=EPOCHS, batch_size=BATCH,  is_frozen=False,
-    #                                                is_off_shelf_model=True, epoch_improvement_limit=20, learning_rate=0.00025,
-    #                                                betas=(0.999, .999), is_save=True)
+    EPOCHS = 50
+    print("Training MNIST CNN")
+    mnist_task_branch.create_and_train_CNN(model_id = "small temporary", num_epochs=EPOCHS, batch_size=BATCH,  is_frozen=False,
+                                           is_off_shelf_model=True, epoch_improvement_limit=20, learning_rate=0.00025,
+                                           betas=(0.999, .999), is_save=True)
+
+    print("Training Fashion MNIST CNN")
+    fashion_mnist_task_branch.create_and_train_CNN(model_id = "small temporary", num_epochs=EPOCHS, batch_size=BATCH,  is_frozen=False,
+                                                   is_off_shelf_model=True, epoch_improvement_limit=20, learning_rate=0.00025,
+                                                   betas=(0.999, .999), is_save=True)
 
     EPOCHS = 600
     ld = 50
@@ -169,28 +169,33 @@ else:
 task_branch_list = [mnist_task_branch,fashion_mnist_task_branch]
 gate = Gate.Gate()
 
-i =1
-for list in [['a','b'],['c','d'],['e','f'],['g','h'],['i','j']]:
 
-    mnist_task_branch.create_blended_dataset_with_synthetic_samples(emnist_data_and_interface,list)
-    print("\nTraining VAE for ",list)
-    name= "mutation"+str(i)
-    mnist_task_branch.create_and_train_VAE( model_id=name, num_epochs=30, batch_size=64, hidden_dim=10, latent_dim=50,
-                                 is_synthetic=False, is_take_existing_VAE=True, teacher_VAE=mnist_task_branch.VAE_most_recent,
-                                 is_new_categories_to_addded_to_existing_task=True, is_completely_new_task=False,
-                                 epoch_improvement_limit=30, learning_rate=0.00035, betas=(0.5, .999), is_save=False, )
 
-    print("\nTraining CNN for ",list)
+Utils.test_synthetic_samples_versus_normal(mnist_data_and_interface, emnist_data_and_interface, PATH_MODELS,device)
 
-    BATCH = 64
-    mnist_task_branch.create_and_train_CNN(model_id = name, num_epochs=15, batch_size=BATCH,  is_frozen=False,
-                                           is_off_shelf_model=True, epoch_improvement_limit=20, learning_rate=0.00025,
-                                           betas=(0.999, .999), is_save=True)
-    i +=1
+
+# i =1
+# for list in [['a','b'],['c','d'],['e','f'],['g','h'],['i','j']]:
+#
+#     mnist_task_branch.create_blended_dataset_with_synthetic_samples(emnist_data_and_interface,list)
+#     print("\nTraining VAE for ",list)
+#     name= "mutation"+str(i)
+#     mnist_task_branch.create_and_train_VAE( model_id=name, num_epochs=30, batch_size=64, hidden_dim=10, latent_dim=50,
+#                                  is_synthetic=False, is_take_existing_VAE=True, teacher_VAE=mnist_task_branch.VAE_most_recent,
+#                                  is_new_categories_to_addded_to_existing_task=True, is_completely_new_task=False,
+#                                  epoch_improvement_limit=30, learning_rate=0.00035, betas=(0.5, .999), is_save=False, )
+#
+#     print("\nTraining CNN for ",list)
+#
+#     BATCH = 64
+#     mnist_task_branch.create_and_train_CNN(model_id = name, num_epochs=15, batch_size=BATCH,  is_frozen=False,
+#                                            is_off_shelf_model=True, epoch_improvement_limit=20, learning_rate=0.00025,
+#                                            betas=(0.999, .999), is_save=True)
+#     i +=1
 
 #emnist_task_branch.create_and_train_VAE(model_id = label, num_epochs=EPOCHS, batch_size=BATCH, hidden_dim=10, latent_dim=ld, is_synthetic=False, is_take_existing_VAE=True, teacher_VAE=mnist_task_branch.VAE_most_recent, new_categories_to_add_to_existing_task= [], is_completely_new_task=True, epoch_improvement_limit=20, learning_rate=lr, betas=b, is_save=True)
 
-do_proven_tests = True
+do_proven_tests = False
 
 if do_proven_tests:
 
