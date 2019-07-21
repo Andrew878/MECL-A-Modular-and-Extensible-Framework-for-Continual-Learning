@@ -56,8 +56,7 @@ class SyntheticDS(Dataset):
                 category = torch.tensor(np.array([category, ])).to(dtype=torch.long).cpu()
             else:
                 #print("reached")
-                image_pil = transforms.ToPILImage()(image)
-                image = self.transforms(image_pil)
+                image = self.transforms['CNN']['test_to_image'](image)
 
         elif (real_or_fake == 'real'):
             #print("here 2")

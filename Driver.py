@@ -1,6 +1,7 @@
 import torch
 import random
 from torchvision import datasets, transforms
+import torchvision.transforms.functional as TF
 
 import matplotlib.pyplot as plt
 import DatasetAndInterface as ds
@@ -17,8 +18,8 @@ random.seed(manualSeed)
 torch.manual_seed(manualSeed)
 
 
-PATH_ROOT = "/cs/scratch/al278/"
 PATH_ROOT = "/cs/tmp/al278/"
+PATH_ROOT = "/cs/scratch/al278/"
 PATH_DATA_MNIST = str(PATH_ROOT)+"MNIST"
 PATH_DATA_FashionMNIST = str(PATH_ROOT) + "FashionMNIST"
 PATH_DATA_EMNIST = str(PATH_ROOT) + "EMNIST"
@@ -91,28 +92,137 @@ all_transforms = {}
 all_transforms['VAE'] = transforms_VAE_one_channel
 all_transforms['CNN'] = transforms_CNN_one_channel_to_three
 
+
 for (dataset, dataset_path) in dataset_path_list:
 
     # from pytorch tutorial
     image_datasets_MNIST = {}
     image_datasets_FashionMNIST = {}
-    image_datasets_EMNIST = {}
     for x in ['train', 'val']:
         image_datasets_MNIST[x] = {}
         image_datasets_FashionMNIST[x] = {}
-        image_datasets_EMNIST[x] = {}
         for y in ['VAE','CNN']:
             image_datasets_MNIST[x][y] = datasets.MNIST(PATH_DATA_MNIST, train=(x == 'train'), download=True, transform = all_transforms[y][x])
             image_datasets_FashionMNIST[x][y] = datasets.FashionMNIST(PATH_DATA_FashionMNIST, train=(x == 'train'), download=True, transform = all_transforms[y][x])
-            image_datasets_EMNIST[x][y] = datasets.EMNIST(PATH_DATA_EMNIST, train=(x == 'train'), download=True, transform = all_transforms[y][x], split='letters')
-            # EMNIST has a index system starting at 1. All others have index system starting at 0. This makes an adjustment
-            image_datasets_EMNIST[x][y].targets = image_datasets_EMNIST[x][y].targets -1
+
+
+
+def return_test_val_split(ds,num_labels,proportion =2, is_verbose = False):
+    ds_length = len(ds)
+    new_ds_val, new_ds_test = torch.utils.data.random_split(ds, [ds_length // proportion, ds_length - ds_length // proportion])
+    check_class_freq(new_ds_val,num_labels, is_verbose)
+    check_class_freq(new_ds_test,num_labels, is_verbose)
+    return new_ds_val, new_ds_test
+
+def check_class_freq(ds,num_labels, is_verbose=False):
+    freq_check = {i: 0 for i in range(0, num_labels)}
+    average_per_label = len(ds)/num_labels
+    for i in range(0, len(ds)):
+        image, cat = ds[i]
+        freq_check[cat] += 1
+    if is_verbose:
+        print("length dataset", len(ds))
+        print(freq_check)
+    for cat in freq_check:
+        percent_variance = abs((freq_check[cat] - average_per_label) / average_per_label)
+        if(percent_variance >0.20):
+            print("Over ", percent_variance, "not stratified enough")
+
+is_verbose_checking_splits = True
+image_datasets_MNIST['test'] ={}
+image_datasets_FashionMNIST['test'] ={}
+for model in ['VAE','CNN']:
+    image_datasets_MNIST['val'][model],image_datasets_MNIST['test'][model] = return_test_val_split(image_datasets_MNIST['val'][model],num_labels=10, proportion=2,is_verbose=is_verbose_checking_splits)
+    image_datasets_FashionMNIST['val'][model],image_datasets_FashionMNIST['test'][model] = return_test_val_split(image_datasets_FashionMNIST['val'][model],num_labels=10, proportion=2,is_verbose=is_verbose_checking_splits)
 
 
 mnist_data_and_interface = ds.DataSetAndInterface('MNIST', image_datasets_MNIST,PATH_DATA_MNIST,all_transforms, image_channel_size_MNIST, image_height_MNIST)
 fashion_mnist_data_and_interface = ds.DataSetAndInterface('Fashion', image_datasets_FashionMNIST,PATH_DATA_FashionMNIST,all_transforms, image_channel_size_MNIST, image_height_MNIST)
 
-emnist_data_and_interface = ds.DataSetAndInterface('EMNIST', image_datasets_EMNIST,PATH_DATA_EMNIST,all_transforms, image_channel_size_MNIST, image_height_MNIST)
+
+transforms_CNN_one_channel_to_three_EMNIST = {
+                'train': transforms.Compose([
+                    lambda img: transforms.functional.rotate(img, -90),
+                    lambda img: transforms.functional.hflip(img),
+                    transforms.Resize(256),
+                    transforms.RandomResizedCrop(224),
+                    transforms.RandomRotation(10),
+                    transforms.ToTensor(),
+                    transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
+                    transforms.Normalize(normalise_for_PIL_mean, normalise_for_PIL_std)
+                ]),
+                'val': transforms.Compose([
+                    lambda img: transforms.functional.rotate(img, -90),
+                    lambda img: transforms.functional.hflip(img),
+                    transforms.Resize(256),
+                    transforms.CenterCrop(224),
+                    transforms.ToTensor(),
+                    transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
+                    transforms.Normalize(normalise_for_PIL_mean, normalise_for_PIL_std)
+                ]),
+                'test': transforms.Compose([
+                    lambda img: transforms.functional.rotate(img, -90),
+                    lambda img: transforms.functional.hflip(img),
+                    transforms.Resize(256),
+                    transforms.CenterCrop(224),
+                    transforms.ToTensor(),
+                    transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
+                    transforms.Normalize(normalise_for_PIL_mean, normalise_for_PIL_std)
+                ]),
+                'test_to_image': transforms.Compose([
+                    transforms.ToPILImage(),
+                    transforms.Resize(256),
+                    transforms.CenterCrop(224),
+                    transforms.ToTensor(),
+                    transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
+                    transforms.Normalize(normalise_for_PIL_mean, normalise_for_PIL_std)
+                ]),
+            }
+
+transforms_VAE_one_channel_EMNIST = {
+                'train': transforms.Compose([
+                    lambda img: transforms.functional.rotate(img, -90),
+                    lambda img: transforms.functional.hflip(img),
+                    transforms.Resize(image_height_MNIST),
+                    transforms.RandomRotation(10),
+                    transforms.ToTensor(),
+                    # transforms.Normalize(normalise_MNIST_mean, normalise_MNIST_std)
+                ]),
+                'val': transforms.Compose([
+                    lambda img: transforms.functional.rotate(img, -90),
+                    lambda img: transforms.functional.hflip(img),
+                    transforms.Resize(image_height_MNIST),
+                    transforms.ToTensor(),
+                    # transforms.Normalize(normalise_MNIST_mean, normalise_MNIST_std)
+                ]),
+                'test': transforms.Compose([
+                    lambda img: transforms.functional.rotate(img, -90),
+                    lambda img: transforms.functional.hflip(img),
+                    transforms.Resize(image_height_MNIST),
+                    transforms.ToTensor(),
+                    # transforms.Normalize(normalise_MNIST_mean, normalise_MNIST_std)
+                ]),
+            }
+all_transforms_EMNIST = {}
+all_transforms_EMNIST['VAE'] = transforms_VAE_one_channel_EMNIST
+all_transforms_EMNIST['CNN'] = transforms_CNN_one_channel_to_three_EMNIST
+
+image_datasets_EMNIST = {}
+for x in ['train', 'val']:
+    image_datasets_EMNIST[x] = {}
+
+    for y in ['VAE', 'CNN']:
+        image_datasets_EMNIST[x][y] = datasets.EMNIST(PATH_DATA_EMNIST, train=(x == 'train'), download=True,
+                                                      transform=all_transforms_EMNIST[y][x], split='letters')
+        # EMNIST has a index system starting at 1. All others have index system starting at 0. This makes an adjustment
+        image_datasets_EMNIST[x][y].targets = image_datasets_EMNIST[x][y].targets - 1
+
+image_datasets_EMNIST['test'] ={}
+for model in ['VAE','CNN']:
+    image_datasets_EMNIST['val'][model],image_datasets_EMNIST['test'][model] = return_test_val_split(image_datasets_EMNIST['val'][model],num_labels=26, proportion=2,is_verbose=is_verbose_checking_splits)
+
+
+emnist_data_and_interface = ds.DataSetAndInterface('EMNIST', image_datasets_EMNIST,PATH_DATA_EMNIST,all_transforms_EMNIST, image_channel_size_MNIST, image_height_MNIST)
 
 mnist_task_branch = task.TaskBranch('MNIST', mnist_data_and_interface, device,PATH_MODELS)
 fashion_mnist_task_branch = task.TaskBranch('Fashion', fashion_mnist_data_and_interface, device, PATH_MODELS)
@@ -155,23 +265,27 @@ if is_saving:
     fashion_mnist_task_branch.create_and_train_VAE(model_id = label, num_epochs=EPOCHS, hidden_dim=10, latent_dim=ld,  is_synthetic=False,epoch_improvement_limit=50, learning_rate=lr, betas=b, is_save=True,batch_size=BATCH)
 
 else:
-
-    is_update_mean_std = False
-    fashion_mnist_task_branch.load_existing_VAE(PATH_MODELS+"VAE Fashion epochs400,batch128,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 233.7498068359375 v2", is_update_mean_std)
-    mnist_task_branch.load_existing_VAE(PATH_MODELS+"VAE MNIST epochs400,batch128,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 88.00115422363281 v2",is_update_mean_std)
-
-    mnist_task_branch.load_existing_CNN(
-        PATH_MODELS + "CNN MNIST epochs50,batch128,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) v1")
-    fashion_mnist_task_branch.load_existing_CNN(
-        PATH_MODELS + "CNN Fashion epochs50,batch128,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) v1")
+    print()
+    # is_update_mean_std = False
+    # fashion_mnist_task_branch.load_existing_VAE(PATH_MODELS+"VAE Fashion epochs400,batch128,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 233.7498068359375 v2", is_update_mean_std)
+    # mnist_task_branch.load_existing_VAE(PATH_MODELS+"VAE MNIST epochs400,batch128,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 88.00115422363281 v2",is_update_mean_std)
+    #
+    # mnist_task_branch.load_existing_CNN(
+    #     PATH_MODELS + "CNN MNIST epochs50,batch128,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) v1")
+    # fashion_mnist_task_branch.load_existing_CNN(
+    #     PATH_MODELS + "CNN Fashion epochs50,batch128,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) v1")
 
 
 task_branch_list = [mnist_task_branch,fashion_mnist_task_branch]
 gate = Gate.Gate()
 
 
-
-Utils.test_synthetic_samples_versus_normal(mnist_data_and_interface, emnist_data_and_interface, PATH_MODELS,device)
+print("\n\n\n\nEXTRA SYNTHETIC SAMPLES (x1 multiplier)")
+Utils.test_synthetic_samples_versus_normal(mnist_data_and_interface, emnist_data_and_interface, PATH_MODELS,device,extra_new_cat_multi=1)
+print("\n\n\n\nEXTRA SYNTHETIC SAMPLES (x2 multiplier)")
+Utils.test_synthetic_samples_versus_normal(mnist_data_and_interface, emnist_data_and_interface, PATH_MODELS,device,extra_new_cat_multi=0.5)
+print("\n\n\n\nEXTRA SYNTHETIC SAMPLES (x3 multiplier)")
+Utils.test_synthetic_samples_versus_normal(mnist_data_and_interface, emnist_data_and_interface, PATH_MODELS,device,extra_new_cat_multi=0.25)
 
 
 # i =1

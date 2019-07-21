@@ -9,6 +9,7 @@ import torch.nn as nn
 import numpy as np
 import mpu
 import CustomDataSetAndLoaderForSynthetic
+import matplotlib.pyplot as plt
 
 
 class TaskBranch:
@@ -57,7 +58,7 @@ class TaskBranch:
             self.VAE_most_recent = CVAE.CVAE(self.dataset_interface.original_input_dimensions, hidden_dim, latent_dim,
                                              self.num_categories_in_task,
                                              self.dataset_interface.original_channel_number, self.device)
-            print("create new VAE to handle ",self.num_categories_in_task, self.categories_list, )
+            print("create new VAE to handle ",self.num_categories_in_task, self.categories_list)
         # if using a pre-trained VAE
         else:
             self.VAE_most_recent = copy.deepcopy(teacher_VAE).to(self.device)
@@ -135,6 +136,11 @@ class TaskBranch:
 
     def run_a_VAE_epoch_calculate_loss(self, data_loader, is_train, teacher_VAE=None, is_synthetic=False,
                                        is_cat_info_required=False):
+
+        if is_train:
+            self.VAE_most_recent.train()
+        else:
+            self.VAE_most_recent.eval()
 
         # To update record for mean and std deviation distance. This deletes old entries before calculating
         if is_cat_info_required:
@@ -350,10 +356,10 @@ class TaskBranch:
             # reshape the data into [batch_size, 784]
             # print(x.size())
             # x = x.view(batch_size, 1, 28, 28)
+            #   print(y)
             x = x.to(self.device)
             y = y.to(self.device)
             #print(y.size())
-            #print(y)
 
             # convert y into one-hot encoding
             # y_one_hot = Utils.idx2onehot(y.view(-1, 1), self.num_categories_in_task)
@@ -398,7 +404,8 @@ class TaskBranch:
 
         return preds
 
-    def create_blended_dataset_with_synthetic_samples(self, new_real_datasetInterface,new_categories_to_add_to_existing_task):
+    def create_blended_dataset_with_synthetic_samples(self, new_real_datasetInterface,new_categories_to_add_to_existing_task,extra_new_cat_multi=1):
+
 
         synthetic_cat_number = len(self.categories_list)
         self.categories_list.extend(new_categories_to_add_to_existing_task)
@@ -410,14 +417,19 @@ class TaskBranch:
 
         blended_dataset = {split: {} for split in self.dataset_splits}
 
+        real_db = None
+
         for model in ['VAE', 'CNN']:
 
-            subset_dataset_real = new_real_datasetInterface.obtain_dataset_with_subset_of_categories(model,
-                                                                                                     new_categories_to_add_to_existing_task)
-
             for split in self.dataset_splits:
-                size_per_class = 1
-                size_per_class = len(subset_dataset_real[split][model]) // len(new_categories_to_add_to_existing_task)
+
+                subset_dataset_real = new_real_datasetInterface.obtain_dataset_with_subset_of_categories(model,split,new_categories_to_add_to_existing_task)
+
+                real_db = subset_dataset_real
+                print(len(real_db))
+
+                size_per_class = 4
+                size_per_class = round(len(subset_dataset_real) / (len(new_categories_to_add_to_existing_task)*(1/extra_new_cat_multi)))
                 self.synthetic_samples_for_reuse[split] = []
 
 
@@ -428,8 +440,45 @@ class TaskBranch:
 
 
                 blended_dataset[split][model] = CustomDataSetAndLoaderForSynthetic.SyntheticDS(
-                    self.synthetic_samples_for_reuse[split], self.dataset_interface.transformations[model][split],subset_dataset_real[split][model],self.categories_list, synthetic_cat_number, original_cat_index_to_new_cat_index_dict)
+                    self.synthetic_samples_for_reuse[split], self.dataset_interface.transformations,subset_dataset_real,self.categories_list, synthetic_cat_number, original_cat_index_to_new_cat_index_dict)
+
 
 
         self.dataset_interface.update_data_set(blended_dataset)
         self.refresh_variables_for_mutated_task()
+
+        fig1 = plt.figure(figsize=(10, 10))
+        x = 0
+        r = 20
+        c = 3
+
+        for i in range(x,r*c):
+            img, cat = self.dataset_interface.dataset['val']['VAE'][i]
+
+            img = img.view(28, 28).data
+            img = img.numpy()
+            ax = fig1.add_subplot(r, c, i-x + 1)
+            ax.axis('off')
+            ax.set_title(cat.item())
+            ax.imshow(img, cmap='gray_r')
+
+        plt.ioff()
+        plt.show()
+
+        # fig2 = plt.figure(figsize=(10, 10))
+        # x = 30
+        # r = 10
+        # c = 3
+        #
+        # for i in range(x, r * c):
+        #     print(len(self.dataset_interface.dataset['train']['VAE']))
+        #     img, cat = self.dataset_interface.dataset['train']['VAE'][i]
+        #     img = img.view(28, 28).data
+        #     img = img.numpy()
+        #     ax = fig2.add_subplot(r, c, i - x + 1)
+        #     ax.axis('off')
+        #     ax.set_title(cat)
+        #     ax.imshow(img, cmap='gray_r')
+        #
+        # plt.ioff()
+        # plt.show()
