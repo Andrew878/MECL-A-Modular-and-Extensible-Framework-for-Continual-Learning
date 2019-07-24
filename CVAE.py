@@ -243,9 +243,10 @@ class CVAE(nn.Module):
         else:
             return list_by_cat
 
-    def generate_single_random_sample(self, category, is_random_cat = False):
+    def generate_single_random_sample(self, category, z=None,is_random_cat = False):
 
-        z = torch.randn(1, self.latent_dim).to(self.device)
+        if z ==None:
+            z = torch.randn(1, self.latent_dim).to(self.device)
 
         if is_random_cat:
             # pick randomly 1 class, for which we want to generate the data

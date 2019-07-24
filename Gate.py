@@ -60,3 +60,26 @@ class Gate:
             return lowest_std_dev_distance_best_task_branch, lowest_std_dev_best_class
         else:
             return lowest_recon_error_best_task_branch, lowest_recon_error_best_class
+
+    def given_new_dataset_find_best_fit_domain_from_existing_tasks(self, datasetAndinterface, category_subset,num_samples_to_check=100):
+
+        print("*** Checking the following new data: ",datasetAndinterface.name, )
+
+
+        if len(category_subset) == 0:
+            dataloader = datasetAndinterface.return_data_loaders(branch_component='VAE', BATCH_SIZE=1)['train']
+        else:
+            dataloader = datasetAndinterface.obtain_dataloader_with_subset_of_categories(branch_component='VAE',split = 'train', category_subset=category_subset, BATCH_SIZE=1)
+
+        most_related_task = None
+        best_task_relativity = 0
+        for task_branch in self.task_branch_dictionary.values():
+            reconstruction_error_average, task_relatedness = task_branch.given_task_data_set_find_task_relatedness(dataloader,num_samples_to_check=num_samples_to_check)
+            print("   --- Checking against:", task_branch.task_name)
+            print("   --- Reconstruction error average",reconstruction_error_average," Task relatedness", task_relatedness)
+            if(task_relatedness>best_task_relativity):
+                best_task_relativity = task_relatedness
+                most_related_task = task_branch
+
+        print("Closest task is ",most_related_task.task_name,"with a task relativity of",best_task_relativity)
+

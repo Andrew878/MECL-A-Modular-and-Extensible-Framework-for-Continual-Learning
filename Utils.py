@@ -8,6 +8,7 @@ from torchvision import datasets, transforms
 from torch import max, zeros
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
+import matplotlib.pyplot as plt
 
 
 def idx2onehot(idx, num_categories):
@@ -54,6 +55,28 @@ def test_generating_and_classification_ability_single_task(number_per_category, 
         pred = task_branch.classify_with_CNN(img_transformed[None].to(device))
         if (pred.item() == synthetic_data_list_y[i]):
             correct_matches_by_class[synthetic_data_list_y[i]] += 1
+
+    # synthetic_data_list_x_short, synthetic_data_list_y_short, = task_branch.VAE_most_recent.generate_synthetic_set_all_cats(
+    #     number_per_category=1)
+    #
+    # fig2 = plt.figure(figsize=(20, 20))
+    # x = 0
+    # r = 60
+    # c = 5
+    #
+    # print("TRYING TO PRINT Z'S")
+    # print(len(synthetic_data_list_x_short))
+    # for i in range(x, r * c):
+    #     img, cat = subset_dataset[i]
+    #     img = img.view(28, 28).data
+    #     img = img.numpy()
+    #     ax = fig2.add_subplot(r, c, i - x + 1)
+    #     ax.axis('off')
+    #     ax.set_title(cat)
+    #     ax.imshow(img, cmap='gray_r')
+    #
+    # plt.ioff()
+    # plt.show()
 
     return correct_matches_by_class
 
@@ -172,26 +195,26 @@ def test_pre_trained_versus_non_pre_trained(new_task_to_be_trained, template_tas
                                                 learning_rate=learning_rate, betas=betas, is_save=is_save)
 
 
-def test_synthetic_samples_versus_normal(original_task_datasetInterface, added_task_datasetInterface, PATH_MODELS,
+def test_synthetic_samples_versus_normal(original_task_datasetInterface, added_task_datasetInterface, PATH_MODELS,record_keeper,
                                          device='cuda', new_classes_per_increment=1, number_increments=3 , extra_new_cat_multi=1):
     print("***** Testing pseudo-rehearsal versus real samples")
 
     new_class_index = 26
     is_time_to_break = False
 
-    is_save = False
+    is_save = True
     BATCH = 64
     EPOCH_IMPROVE_LIMIT = 20
     num_per_cat_gen_class_test = 1
     num_per_cat_gen_class_test = 1000
 
     EPOCH_CNN = 1
-    EPOCH_CNN = 5
+    EPOCH_CNN = 10
     BETA_CNN = (0.999, .999)
     LEARNR_CNN = 0.00025
 
-    EPOCH_VAE = 2
-    EPOCH_VAE = 30
+    EPOCH_VAE = 1
+    EPOCH_VAE = 100
     LAT_DIM_VAE = 50
     BETA_VAE = (0.5, 0.999)
     LEARNR_VAE = 0.00035
@@ -200,14 +223,15 @@ def test_synthetic_samples_versus_normal(original_task_datasetInterface, added_t
     task_DIS_New_for_synthetic = copy.deepcopy(added_task_datasetInterface)
 
     combined_task_branch_synthetic = task.TaskBranch(task_DIS_orig_for_synthetic.name + " pseudo", task_DIS_orig_for_synthetic,
-                                                     device, PATH_MODELS)
+                                                     device, PATH_MODELS,record_keeper)
 
     for increment in range(0, number_increments):
 
         task_DIS_orig = copy.deepcopy(original_task_datasetInterface)
+        #task_DIS_orig.reset_variables_to_initial_state()
         task_DIS_added = copy.deepcopy(added_task_datasetInterface)
 
-        name = "increment" + str(increment)
+        name = "increment" + str(increment) + "synth multi "+ str(extra_new_cat_multi)
 
         if (increment == 0):
             print("Starting point, just MNIST....")
@@ -223,7 +247,7 @@ def test_synthetic_samples_versus_normal(original_task_datasetInterface, added_t
             #                                                     learning_rate=LEARNR_VAE, betas=BETA_VAE,
             #                                                     is_save=True)
 
-            combined_task_branch_synthetic.load_existing_VAE(PATH_MODELS+"VAE MNIST pseudo epochs2,batch128,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 103.26511754150391 increment0",False)
+            combined_task_branch_synthetic.load_existing_VAE(PATH_MODELS+"VAE MNIST epochs200,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 89.18212963867188 v2",False)
 
         else:
 
@@ -240,30 +264,15 @@ def test_synthetic_samples_versus_normal(original_task_datasetInterface, added_t
             # merge dataset
             task_DIS_orig.add_outside_data_to_data_set(task_DIS_added, list_categories_to_add)
 
-            combined_task_branch_no_synthetic = task.TaskBranch(task_DIS_orig.name + str(list_categories_to_add) +" real",
-                                                                task_DIS_orig, device, PATH_MODELS)
-
-            print("\n------------ Real Samples", list_categories_to_add)
-            print("\nReal Samples - CNN")
-            combined_task_branch_no_synthetic.create_and_train_CNN(model_id=name, num_epochs=EPOCH_CNN,
-                                                                   batch_size=BATCH, is_frozen=False,
-                                                                   is_off_shelf_model=True,
-                                                                   epoch_improvement_limit=EPOCH_IMPROVE_LIMIT,
-                                                                   learning_rate=LEARNR_CNN,
-                                                                   betas=BETA_CNN, is_save=is_save)
-            print("\nReal Samples - VAE")
-            combined_task_branch_no_synthetic.create_and_train_VAE(model_id=name, num_epochs=EPOCH_VAE, hidden_dim=10,
-                                                                   latent_dim=LAT_DIM_VAE,
-                                                                   is_synthetic=False,is_take_existing_VAE=False, is_new_categories_to_addded_to_existing_task=False,
-                                                                   epoch_improvement_limit=EPOCH_IMPROVE_LIMIT,
-                                                                   learning_rate=LEARNR_VAE,
-                                                                   betas=BETA_VAE, is_save=is_save, batch_size=BATCH)
 
             print("\n------------ Pseudo Samples", list_categories_to_add)
 
             print("\nPseudo Samples - create samples")
             combined_task_branch_synthetic.create_blended_dataset_with_synthetic_samples(task_DIS_New_for_synthetic,
                                                                                          list_categories_to_add_marginal,extra_new_cat_multi)
+
+            combined_task_branch_no_synthetic = task.TaskBranch(task_DIS_orig.name + str(list_categories_to_add) +" real",
+                                                                task_DIS_orig, device, PATH_MODELS,record_keeper)
 
             print("\nPseudo Samples - Training VAE")
             combined_task_branch_synthetic.create_and_train_VAE(model_id=name, num_epochs=EPOCH_VAE, batch_size=BATCH,
@@ -285,88 +294,109 @@ def test_synthetic_samples_versus_normal(original_task_datasetInterface, added_t
                                                                 betas=BETA_CNN, is_save=is_save)
 
 
+            print("\n------------ Real Samples", list_categories_to_add)
+            print("\nReal Samples - CNN")
+            combined_task_branch_no_synthetic.create_and_train_CNN(model_id=name, num_epochs=EPOCH_CNN,
+                                                                   batch_size=BATCH, is_frozen=False,
+                                                                   is_off_shelf_model=True,
+                                                                   epoch_improvement_limit=EPOCH_IMPROVE_LIMIT,
+                                                                   learning_rate=LEARNR_CNN,
+                                                                   betas=BETA_CNN, is_save=is_save)
+            print("\nReal Samples - VAE")
+            combined_task_branch_no_synthetic.create_and_train_VAE(model_id=name, num_epochs=EPOCH_VAE, hidden_dim=10,
+                                                                   latent_dim=LAT_DIM_VAE,
+                                                                   is_synthetic=False,is_take_existing_VAE=False, is_new_categories_to_addded_to_existing_task=False,
+                                                                   epoch_improvement_limit=EPOCH_IMPROVE_LIMIT,
+                                                                   learning_rate=LEARNR_VAE,
+                                                                   betas=BETA_VAE, is_save=is_save, batch_size=BATCH)
+
 
             given_test_set_compare_synthetic_and_normal_approaches(combined_task_branch_synthetic, combined_task_branch_no_synthetic, task_DIS_orig,
-                                                                   list_categories_to_add)
+                                                                   list_categories_to_add, extra_new_cat_multi)
 
             test_generating_and_classification_ability_multi_tasks([combined_task_branch_synthetic,combined_task_branch_no_synthetic], number_per_category=num_per_cat_gen_class_test, device=device)
 
 
-def given_test_set_compare_synthetic_and_normal_approaches(task_branch_synth, task_branch_real, dataSetInter,new_cats_added):
+            record_keeper.record_to_file("real_versus fake continual learning adding "+str(list_categories_to_add)+" synth multi "+str(extra_new_cat_multi))
+
+
+def given_test_set_compare_synthetic_and_normal_approaches(task_branch_synth, task_branch_real, dataSetInter,new_cats_added,extra_new_cat_multi):
 
     device = 'cuda'
+    split_to_measure_against = 'val'
 
     for task_branch in [task_branch_synth, task_branch_real]:
 
-        print("\n *************\nFor task ", task_branch.task_name, new_cats_added)
-
-        data_loader_CNN = dataSetInter.return_data_loaders('CNN', BATCH_SIZE = 1)
-        data_loader_VAE = dataSetInter.return_data_loaders('VAE', BATCH_SIZE = 1)
-
-
-        task_branch.VAE_most_recent.eval()
-        task_branch.CNN_most_recent.eval()
-        task_branch.VAE_most_recent.to(device)
-        task_branch.CNN_most_recent.to(device)
-
-        # To update record for mean and std deviation distance. This deletes old entries before calculating
-        by_category_record_of_recon_error_and_accuracy = {i: [0,0,0] for i in range(0, task_branch.num_categories_in_task)}
+        task_branch.run_end_of_training_benchmarks("real_versus fake continual learning adding "+str(new_cats_added)+" synth multi "+str(extra_new_cat_multi),dataSetInter)
 
 
 
-        for i, (x, y) in enumerate(data_loader_VAE['val']):
-            x = x.to(device)
-            y_original = y.item()
-            y = idx2onehot(y.view(-1, 1), task_branch.num_categories_in_task)
-            y = y.to(device)
-
-            with torch.no_grad():
-                reconstructed_x, z_mu, z_var = task_branch.VAE_most_recent(x, y)
-
-            # loss
-            loss = task_branch.VAE_most_recent.loss(x, reconstructed_x, z_mu, z_var)
-
-            by_category_record_of_recon_error_and_accuracy[y_original][0] += 1
-            by_category_record_of_recon_error_and_accuracy[y_original][1] += loss.item()
-
-
-        for i, (x, y) in enumerate(data_loader_CNN['val']):
-            # reshape the data into [batch_size, 784]
-            # print(x.size())
-            # x = x.view(batch_size, 1, 28, 28)
-            x = x.to(device)
-            y_original = y.item()
-            y = y.to(device)
-
-            with torch.no_grad():
-                outputs = task_branch.CNN_most_recent(x)
-                _, preds = torch.max(outputs, 1)
-                # print(preds)
-                #criterion = nn.CrossEntropyLoss()
-                #loss = criterion(outputs.to(device), y)
-
-                correct = torch.sum(preds == y.data)
-
-            by_category_record_of_recon_error_and_accuracy[y_original][2] += correct.item()
-
-        task_branch.VAE_most_recent.cpu()
-        task_branch.CNN_most_recent.cpu()
-
-
-        total_count =0
-        total_recon =0
-        total_correct =0
-        for category in by_category_record_of_recon_error_and_accuracy:
-
-            count = by_category_record_of_recon_error_and_accuracy[category][0]
-            recon_ave = by_category_record_of_recon_error_and_accuracy[category][1]/count
-            accuracy = by_category_record_of_recon_error_and_accuracy[category][2] /count
-
-            total_count += by_category_record_of_recon_error_and_accuracy[category][0]
-            total_recon += by_category_record_of_recon_error_and_accuracy[category][1]
-            total_correct += by_category_record_of_recon_error_and_accuracy[category][2]
-
-            print("For:",count, category," Ave. Recon:",recon_ave," Ave. Accuracy:",accuracy)
-
-        print("For all (",total_count,"): Ave. Recon:",total_recon/total_count," Ave. Accuracy:",total_correct/total_count)
+        # data_loader_CNN = dataSetInter.return_data_loaders('CNN', BATCH_SIZE = 1)
+        # data_loader_VAE = dataSetInter.return_data_loaders('VAE', BATCH_SIZE = 1)
+        #
+        #
+        # task_branch.VAE_most_recent.eval()
+        # task_branch.CNN_most_recent.eval()
+        # task_branch.VAE_most_recent.to(device)
+        # task_branch.CNN_most_recent.to(device)
+        #
+        # # To update record for mean and std deviation distance. This deletes old entries before calculating
+        # by_category_record_of_recon_error_and_accuracy = {i: [0,0,0] for i in range(0, task_branch.num_categories_in_task)}
+        #
+        #
+        # for i, (x, y) in enumerate(data_loader_VAE[split_to_measure_against]):
+        #     x = x.to(device)
+        #     y_original = y.item()
+        #     y = idx2onehot(y.view(-1, 1), task_branch.num_categories_in_task)
+        #     y = y.to(device)
+        #
+        #     with torch.no_grad():
+        #         reconstructed_x, z_mu, z_var = task_branch.VAE_most_recent(x, y)
+        #
+        #     # loss
+        #     loss = task_branch.VAE_most_recent.loss(x, reconstructed_x, z_mu, z_var)
+        #
+        #     by_category_record_of_recon_error_and_accuracy[y_original][0] += 1
+        #     by_category_record_of_recon_error_and_accuracy[y_original][1] += loss.item()
+        #
+        #
+        # for i, (x, y) in enumerate(data_loader_CNN[split_to_measure_against]):
+        #     # reshape the data into [batch_size, 784]
+        #     # print(x.size())
+        #     # x = x.view(batch_size, 1, 28, 28)
+        #     x = x.to(device)
+        #     y_original = y.item()
+        #     y = y.to(device)
+        #
+        #     with torch.no_grad():
+        #         outputs = task_branch.CNN_most_recent(x)
+        #         _, preds = torch.max(outputs, 1)
+        #         # print(preds)
+        #         #criterion = nn.CrossEntropyLoss()
+        #         #loss = criterion(outputs.to(device), y)
+        #
+        #         correct = torch.sum(preds == y.data)
+        #
+        #     by_category_record_of_recon_error_and_accuracy[y_original][2] += correct.item()
+        #
+        # task_branch.VAE_most_recent.cpu()
+        # task_branch.CNN_most_recent.cpu()
+        #
+        #
+        # total_count =0
+        # total_recon =0
+        # total_correct =0
+        # for category in by_category_record_of_recon_error_and_accuracy:
+        #
+        #     count = by_category_record_of_recon_error_and_accuracy[category][0]
+        #     recon_ave = by_category_record_of_recon_error_and_accuracy[category][1]/count
+        #     accuracy = by_category_record_of_recon_error_and_accuracy[category][2] /count
+        #
+        #     total_count += by_category_record_of_recon_error_and_accuracy[category][0]
+        #     total_recon += by_category_record_of_recon_error_and_accuracy[category][1]
+        #     total_correct += by_category_record_of_recon_error_and_accuracy[category][2]
+        #
+        #     print("For:",count, category," Ave. Recon:",recon_ave," Ave. Accuracy:",accuracy)
+        #
+        # print("For all (",total_count,"): Ave. Recon:",total_recon/total_count," Ave. Accuracy:",total_correct/total_count)
 

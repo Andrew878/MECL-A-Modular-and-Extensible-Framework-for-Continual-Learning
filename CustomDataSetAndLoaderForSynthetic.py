@@ -2,6 +2,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets, transforms
 import numpy as np
+from PIL import Image
 
 class SyntheticDS(Dataset):
     """
@@ -85,7 +86,7 @@ class SyntheticDS(Dataset):
             print(self.freq, self.freq_check)
         #print(real_or_fake, image.size(), category)#, image.type(), category,category.size(),  category.type(), category)
 
-        return image, category
+        return image.float(), category
 
 
     def __len__(self):
@@ -94,3 +95,60 @@ class SyntheticDS(Dataset):
         """
         return self.len
 
+
+
+class CustomDS(Dataset):
+    """
+    A customized data loader.
+    """
+
+    def __init__(self, dataset, transform=None, reduce_size = False):
+        """ Intialize the dataset
+        """
+
+        self.dataset = dataset
+        self.EMNIST_subset = range(21,26)
+
+        list_of_data = []
+        list_of_cats = []
+        for image, cat in dataset:
+            if(reduce_size):
+                if cat in self.EMNIST_subset:
+                    list_of_data.append(image)
+                    list_of_cats.append(cat)
+            else:
+                list_of_data.append(image)
+                list_of_cats.append(cat)
+
+        self.data = torch.stack(list_of_data)
+        print(self.data.size())#.type(torch.ByteTensor)
+        self.targets = torch.IntTensor(list_of_cats)
+        self.targets = self.targets#.type(torch.ByteTensor)
+
+        # print("data from new class", self.data)
+        # print("targets from new class", self.targets)
+
+        self.transform = transform
+
+
+    def __getitem__(self, index):
+        """
+        Args:
+            index (int): Index
+
+        Returns:
+            tuple: (image, target) where target is index of the target class.
+        """
+        img, target = self.data[index], int(self.targets[index])
+
+        # img = Image.fromarray(img.numpy(), mode='L')
+        #
+        # if self.transform != None:
+        #     img = self.transform(img)
+
+
+        return img.float(), target
+
+    def __len__(self):
+        print(len(self.targets))
+        return len(self.targets)

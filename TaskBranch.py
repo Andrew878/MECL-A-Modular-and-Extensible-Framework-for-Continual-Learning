@@ -10,11 +10,13 @@ import numpy as np
 import mpu
 import CustomDataSetAndLoaderForSynthetic
 import matplotlib.pyplot as plt
+import EpochRecord
+import RecordKeeper
 
 
 class TaskBranch:
 
-    def __init__(self, task_name, dataset_interface, device, initial_directory_path):
+    def __init__(self, task_name, dataset_interface, device, initial_directory_path, record_keeper):
 
         self.task_name = task_name
         self.dataset_interface = dataset_interface
@@ -23,20 +25,28 @@ class TaskBranch:
         self.categories_list = self.dataset_interface.categories_list
 
         self.VAE_most_recent = None
-        self.VAE_history = []
+        self.VAE_most_recent_path = None
         self.CNN_most_recent = None
+        self.CNN_most_recent_path = None
         self.CNN_history = []
+
+        self.num_VAE_epochs = 0
+        self.num_CNN_epochs = 0
 
         self.device = device
         self.VAE_optimizer = None
         self.CNN_optimizer = None
 
+        self.overall_average_reconstruction_error = None
         self.dataset_splits = self.dataset_interface.dataset_splits
         self.by_category_record_of_reconstruction_error = None
         self.by_category_mean_std_of_reconstruction_error = None
         self.has_VAE_changed_since_last_mean_std_measurements = True
 
         self.mutated_count = 0
+        self.fixed_noise = self.dataset_interface.list_of_fixed_noise
+
+        self.record_keeper = record_keeper
 
     def refresh_variables_for_mutated_task(self):
         self.mutated_count += 1
@@ -50,7 +60,9 @@ class TaskBranch:
     def create_and_train_VAE(self, model_id, num_epochs=30, batch_size=64, hidden_dim=10, latent_dim=50,
                              is_synthetic=False, is_take_existing_VAE=False, teacher_VAE=None,
                              is_new_categories_to_addded_to_existing_task= False, is_completely_new_task=False,
-                             epoch_improvement_limit=30, learning_rate=0.00035, betas=(0.5, .999), is_save=False, ):
+                             epoch_improvement_limit=30, learning_rate=0.00035, betas=(0.5, .999),weight_decay = 0.0001, is_save=False, ):
+
+        self.num_VAE_epochs = num_epochs
 
         # if not using a pre-trained VAE, create new VAE
         if not is_take_existing_VAE:
@@ -75,7 +87,7 @@ class TaskBranch:
 
         patience_counter = 0
         best_val_loss = 100000000000
-        self.VAE_optimizer = torch.optim.Adam(self.VAE_most_recent.parameters(), lr=learning_rate, betas=betas)
+        self.VAE_optimizer = torch.optim.Adam(self.VAE_most_recent.parameters(), lr=learning_rate, betas=betas,weight_decay=weight_decay)
 
         #if (not is_new_categories_to_addded_to_existing_task):
         dataloaders = self.dataset_interface.return_data_loaders('VAE', BATCH_SIZE=batch_size)
@@ -125,8 +137,12 @@ class TaskBranch:
             learning_rate) + ",betas" + str(betas) + "lowest_error " + str(best_val_loss) + " "
         model_string += model_id
 
+        self.VAE_most_recent_path = self.initial_directory_path + model_string
+        self.overall_average_reconstruction_error = best_val_loss
+
         if is_save:
-            torch.save(self.VAE_most_recent, self.initial_directory_path + model_string)
+            torch.save(self.VAE_most_recent, self.VAE_most_recent_path)
+
 
         #REMOVE COMMENT
        # self.obtain_VAE_recon_error_mean_and_std_per_class(self.initial_directory_path + model_string)
@@ -149,10 +165,10 @@ class TaskBranch:
         loss_sum = 0
         for i, (x, y) in enumerate(data_loader):
             # reshape the data into [batch_size, 784]
-            # print(x.size())
-            # x = x.view(batch_size, 1, 28, 28)
+            #print(x.size())
+            #x = x.view(batch_size, 1, 28, 28)
             x = x.to(self.device)
-            # print(x)
+            #print(y)
 
             if is_cat_info_required:
                 cat_record = self.by_category_record_of_reconstruction_error[y.item()]
@@ -195,7 +211,9 @@ class TaskBranch:
             # loss
             loss = self.VAE_most_recent.loss(x, reconstructed_x, z_mu, z_var)
             loss_sum += loss.item()
+            # print("train? ",is_train, i)
             # print(loss.item())
+            # print(loss)
 
             if is_cat_info_required:
                 cat_record.append(loss.item())
@@ -211,15 +229,20 @@ class TaskBranch:
     def load_existing_VAE(self, PATH, is_calculate_mean_std=False):
         self.VAE_most_recent = torch.load(PATH)
 
-        # REMOVE COMMENTS!!!!!
-        # if is_calculate_mean_std:
-        #     print(self.task_name, " - Loaded VAE model, now calculating reconstruction error mean, std")
-        #     self.obtain_VAE_recon_error_mean_and_std_per_class(PATH)
-        # else:
-        #     self.by_category_mean_std_of_reconstruction_error = mpu.io.read(PATH + "mean,std.pickle")
+        #REMOVE COMMENTS!!!!!
+        if is_calculate_mean_std:
+            print(self.task_name, " - Loaded VAE model, now calculating reconstruction error mean, std")
+            self.obtain_VAE_recon_error_mean_and_std_per_class(PATH)
+        else:
+            self.by_category_mean_std_of_reconstruction_error = mpu.io.read(PATH + "mean,std.pickle")
+            self.overall_average_reconstruction_error = mpu.io.read(PATH + "overallmean.pickle")
 
     def create_and_train_CNN(self, model_id, num_epochs=30, batch_size=64, is_frozen=False, is_off_shelf_model=False,
-                             epoch_improvement_limit=20, learning_rate=0.0003, betas=(0.999, .999), is_save=False):
+                             epoch_improvement_limit=20, learning_rate=0.0003, betas=(0.999, .999), weight_decay = 0.0001, is_save=False):
+
+
+        self.num_CNN_epochs = num_epochs
+
 
         # need to fix hidden dimensions
 
@@ -240,15 +263,15 @@ class TaskBranch:
             if is_frozen == True:
                 # only fc layer being optimised
                 self.CNN_optimizer = torch.optim.Adam(self.CNN_most_recent.fc.parameters(), lr=learning_rate,
-                                                      betas=betas)
+                                                      betas=betas, weight_decay=weight_decay)
             else:
                 # all layers being optimised
-                self.CNN_optimizer = torch.optim.Adam(self.CNN_most_recent.parameters(), lr=learning_rate, betas=betas)
+                self.CNN_optimizer = torch.optim.Adam(self.CNN_most_recent.parameters(), lr=learning_rate, betas=betas,weight_decay=weight_decay)
 
         else:
             self.CNN_most_recent = None
             # all layers being optimised
-            self.CNN_optimizer = torch.optim.Adam(self.CNN_most_recent.parameters(), lr=learning_rate, betas=betas)
+            self.CNN_optimizer = torch.optim.Adam(self.CNN_most_recent.parameters(), lr=learning_rate, betas=betas,weight_decay=weight_decay)
 
         criterion = nn.CrossEntropyLoss()
 
@@ -281,7 +304,7 @@ class TaskBranch:
                 # send to CPU to save on GPU RAM
                 best_model_wts = copy.deepcopy(self.CNN_most_recent.state_dict())
                 print(f'Epoch {epoch}, Train Acc: {train_acc:.4f}, Val Acc: {val_acc:.4f} ', time_elapsed,
-                      "**** new best ****",correct_guesses_train,self.dataset_interface.training_set_size,correct_guesses_val,self.dataset_interface.val_set_size)
+                      "**** new best ****",correct_guesses_train.item(),"out of",self.dataset_interface.training_set_size,"out of",correct_guesses_val.item(),self.dataset_interface.val_set_size)
 
 
             else:
@@ -296,12 +319,14 @@ class TaskBranch:
 
         self.CNN_most_recent.load_state_dict(best_model_wts)
 
-        if is_save:
-            model_string = "CNN " + self.task_name + " epochs" + str(num_epochs) + ",batch" + str(
-                batch_size) + ",pretrained" + str(is_off_shelf_model) + ",frozen" + str(is_frozen) + ",lr" + str(
-                learning_rate) + ",betas" + str(betas) + " accuracy " + str(best_val_acc) + " "
-            model_string += model_id
+        model_string = "CNN " + self.task_name + " epochs" + str(num_epochs) + ",batch" + str(
+            batch_size) + ",pretrained" + str(is_off_shelf_model) + ",frozen" + str(is_frozen) + ",lr" + str(
+            learning_rate) + ",betas" + str(betas) + " accuracy " + str(best_val_acc.item()) + " "
+        model_string += model_id
 
+        self.CNN_most_recent_path = self.initial_directory_path + model_string
+
+        if is_save:
             torch.save(self.CNN_most_recent, self.initial_directory_path + model_string)
 
         self.CNN_most_recent.cpu()
@@ -309,13 +334,14 @@ class TaskBranch:
 
     def obtain_VAE_recon_error_mean_and_std_per_class(self, VAE_MODEL_PATH=None):
 
-        print("Updating VAE record means, standard deviations...")
+        print("...updating VAE record means, standard deviations...")
 
         data_loader = self.dataset_interface.return_data_loaders(branch_component='VAE',
                                                                  BATCH_SIZE=1)
 
         # get a record of loss reconstruction on training set, but don't do any training
-        self.run_a_VAE_epoch_calculate_loss(data_loader['train'], is_train=False, is_cat_info_required=True)
+        train_loss = self.run_a_VAE_epoch_calculate_loss(data_loader['train'], is_train=False, is_cat_info_required=True)
+        self.overall_average_reconstruction_error = train_loss/self.dataset_interface.training_set_size
 
         # initialize dictionary
         self.by_category_mean_std_of_reconstruction_error = {}
@@ -326,6 +352,9 @@ class TaskBranch:
             self.by_category_mean_std_of_reconstruction_error[cat] = (mean, std)
 
         mpu.io.write(VAE_MODEL_PATH + "mean,std.pickle", self.by_category_mean_std_of_reconstruction_error)
+        mpu.io.write(VAE_MODEL_PATH + "overallmean.pickle", self.overall_average_reconstruction_error)
+
+
 
     # def
 
@@ -337,10 +366,32 @@ class TaskBranch:
                                                                                       only_return_best=True,
                                                                                       is_standardised_distance_check=is_standardised_distance_check)
 
+    def given_task_data_set_find_task_relatedness(self, new_task_data_loader, num_samples_to_check):
+
+        reconstruction_error_sum = 0
+        sample_count = 0
+        for i, (x, y) in enumerate(new_task_data_loader):
+
+
+            reconstruction_error_sum += self.given_observation_find_lowest_reconstruction_error(x,False)[0][1]
+
+            if i > num_samples_to_check:
+                break
+
+            sample_count = i
+
+        reconstruction_error_average = reconstruction_error_sum/sample_count
+
+        task_relatedness = 1 - abs(self.overall_average_reconstruction_error - reconstruction_error_average)/(self.overall_average_reconstruction_error + reconstruction_error_average)
+
+        return reconstruction_error_average, task_relatedness
+
+
+
     def generate_single_random_sample(self, category, is_random_cat=False):
         return self.VAE_most_recent.generate_single_random_sample(category, is_random_cat)
 
-    def run_a_CNN_epoch_calculate_loss(self, data_loader, criterion, is_train):
+    def run_a_CNN_epoch_calculate_loss(self, data_loader, criterion, is_train, samples_limited_percentage = 1):
 
         running_loss = 0.0
         running_corrects = 0
@@ -350,16 +401,22 @@ class TaskBranch:
         else:
             self.CNN_most_recent.eval()
 
+
+
         loss_sum = 0.0
         running_corrects = 0
         for i, (x, y) in enumerate(data_loader):
+
+            #if(samples_limited_percentage*data_loader.batch)
+
             # reshape the data into [batch_size, 784]
-            # print(x.size())
+            #print(x.size())
             # x = x.view(batch_size, 1, 28, 28)
             #   print(y)
             x = x.to(self.device)
             y = y.to(self.device)
             #print(y.size())
+            #print(y)
 
             # convert y into one-hot encoding
             # y_one_hot = Utils.idx2onehot(y.view(-1, 1), self.num_categories_in_task)
@@ -376,10 +433,17 @@ class TaskBranch:
                 #print(preds)
                 loss = criterion(outputs.to(self.device), y)
 
-            # loss
-            #print(loss)
             loss_sum += loss.item()
             running_corrects += torch.sum(preds == y.data)
+
+            # loss
+            # print("train? ",is_train, i)
+            # print(preds)
+            # print(preds == y.data)
+            # print(torch.sum(preds == y.data))
+            # print(running_corrects)
+            # if(running_corrects> (i+1)*64):
+            #     print("EXCEEDED\n\n\n\n")
 
             # backward + optimize only if in training phase
             if is_train:
@@ -482,3 +546,93 @@ class TaskBranch:
         #
         # plt.ioff()
         # plt.show()
+
+    def run_end_of_training_benchmarks(self, test_name, dataset_interface = None):
+
+
+        if dataset_interface == None:
+            dataset_interface = self.dataset_interface
+
+        print("\n *************\nFor task ", self.task_name)
+        print(self.VAE_most_recent_path)
+        print(self.CNN_most_recent_path)
+
+        data_loader_CNN = dataset_interface.return_data_loaders('CNN', BATCH_SIZE=1)
+        data_loader_VAE = dataset_interface.return_data_loaders('VAE', BATCH_SIZE=1)
+
+        self.VAE_most_recent.eval()
+        self.CNN_most_recent.eval()
+        self.VAE_most_recent.to(self.device)
+        self.CNN_most_recent.to(self.device)
+
+        # To update record for mean and std deviation distance. This deletes old entries before calculating
+        by_category_record_of_recon_error_and_accuracy = {i: [0, 0, 0] for i in
+                                                          range(0, self.num_categories_in_task)}
+
+        for i, (x, y) in enumerate(data_loader_VAE['val']):
+            x = x.to(self.device)
+            y_original = y.item()
+            y = Utils.idx2onehot(y.view(-1, 1), self.num_categories_in_task)
+            y = y.to(self.device)
+
+            with torch.no_grad():
+                reconstructed_x, z_mu, z_var = self.VAE_most_recent(x, y)
+
+            # loss
+            loss = self.VAE_most_recent.loss(x, reconstructed_x, z_mu, z_var)
+
+            by_category_record_of_recon_error_and_accuracy[y_original][0] += 1
+            by_category_record_of_recon_error_and_accuracy[y_original][1] += loss.item()
+
+        for i, (x, y) in enumerate(data_loader_CNN['val']):
+            # reshape the data into [batch_size, 784]
+            # print(x.size())
+            # x = x.view(batch_size, 1, 28, 28)
+            x = x.to(self.device)
+            y_original = y.item()
+            y = y.to(self.device)
+
+            with torch.no_grad():
+                outputs = self.CNN_most_recent(x)
+                _, preds = torch.max(outputs, 1)
+                # print(preds)
+                # criterion = nn.CrossEntropyLoss()
+                # loss = criterion(outputs.to(device), y)
+
+                correct = torch.sum(preds == y.data)
+
+            by_category_record_of_recon_error_and_accuracy[y_original][2] += correct.item()
+
+        self.VAE_most_recent.cpu()
+        self.CNN_most_recent.cpu()
+
+        total_count = 0
+        total_recon = 0
+        total_correct = 0
+
+        recon_per_class = [0 for i in range(0, self.num_categories_in_task)]
+        accuracy_per_class = [0 for i in range(0, self.num_categories_in_task)]
+
+        for category in by_category_record_of_recon_error_and_accuracy:
+            count = by_category_record_of_recon_error_and_accuracy[category][0]
+            recon_ave = by_category_record_of_recon_error_and_accuracy[category][1] / count
+            accuracy = by_category_record_of_recon_error_and_accuracy[category][2] / count
+
+            total_count += by_category_record_of_recon_error_and_accuracy[category][0]
+            total_recon += by_category_record_of_recon_error_and_accuracy[category][1]
+            total_correct += by_category_record_of_recon_error_and_accuracy[category][2]
+
+            recon_per_class[category] +=recon_ave
+            accuracy_per_class[category] +=accuracy
+
+            print("For:", count, category, " Ave. Recon:", recon_ave, " Ave. Accuracy:", accuracy)
+
+        total_average_recon = total_recon / total_count
+        total_accuracy = total_correct / total_count
+        print("For all (", total_count, "): Ave. Recon:", total_average_recon, " Ave. Accuracy:", total_accuracy)
+
+
+
+        epoch_record = EpochRecord.EpochRecord(test_name, self.task_name, str(self.num_VAE_epochs), str(self.num_CNN_epochs), total_count, self.num_categories_in_task, total_average_recon,total_accuracy, self.categories_list, recon_per_class, accuracy_per_class, random_image_per_class_list=None)
+
+        self.record_keeper.record_iteration_accuracy(test_name, epoch_record)
