@@ -82,7 +82,7 @@ class SyntheticDS(Dataset):
 
 
 
-        if self.freq%10000==0:
+        if self.freq%1000000==0:
             print(self.freq, self.freq_check)
         #print(real_or_fake, image.size(), category)#, image.type(), category,category.size(),  category.type(), category)
 

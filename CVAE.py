@@ -168,7 +168,7 @@ class CVAE(nn.Module):
         return generated_x, z_mu, z_var
 
     def loss(self,x, reconstructed_x, mean, log_var):
-        # reconstruction loss
+        # reconstruction loss (input, target)
         RCL = F.binary_cross_entropy(reconstructed_x, x, reduction='sum')
         # kl divergence loss
         KLD = -0.5 * torch.sum(1 + log_var - mean.pow(2) - log_var.exp())
@@ -245,7 +245,7 @@ class CVAE(nn.Module):
 
     def generate_single_random_sample(self, category, z=None,is_random_cat = False):
 
-        if z ==None:
+        if z is None:
             z = torch.randn(1, self.latent_dim).to(self.device)
 
         if is_random_cat:

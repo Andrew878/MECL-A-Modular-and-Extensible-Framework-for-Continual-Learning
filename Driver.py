@@ -99,6 +99,7 @@ transforms_VAE_one_channel = {
     ]),
 }
 
+
 all_transforms = {}
 all_transforms['VAE'] = transforms_VAE_one_channel
 all_transforms['CNN'] = transforms_CNN_one_channel_to_three
@@ -247,7 +248,7 @@ emnist_task_branch = task.TaskBranch('EMNIST', emnist_data_and_interface, device
 is_saving = False
 label = "v2"
 BATCH = 128
-EPOCHS = 200
+EPOCHS = 100
 ld = 50
 b = (0.5, 0.999)
 lr = 0.00035
@@ -269,7 +270,7 @@ if is_saving:
                                                    is_off_shelf_model=True, epoch_improvement_limit=20, learning_rate=0.00025,
                                                    betas=(0.999, .999), weight_decay=wd, is_save=True)
 
-    EPOCHS_VAE = 200
+    EPOCHS_VAE = 100
     ld = 50
     b = (0.5,0.999)
     lr = 0.00035
@@ -301,15 +302,19 @@ task_branch_list = [mnist_task_branch,fashion_mnist_task_branch]
 gate = Gate.Gate()
 gate.add_task_branch(mnist_task_branch,fashion_mnist_task_branch)
 
-#gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(fashion_mnist_data_and_interface,[],100)
-#gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(mnist_data_and_interface,[],100)
+gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(fashion_mnist_data_and_interface,[],5000)
+gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(mnist_data_and_interface,[],5000)
+
+Utils.test_concept_drift_for_single_task(task_branch=mnist_task_branch, shear_degree_max=40,shear_degree_increments=10, split='train', num_samples_to_check=1000)
+#Utils.compare_pretrained_task_branches(mnist_data_and_interface, emnist_data_and_interface, PATH_MODELS,record_keeper)
+
 #
-print("\n\n\n\nEXTRA SYNTHETIC SAMPLES (x1 multiplier)")
-Utils.test_synthetic_samples_versus_normal(mnist_data_and_interface, emnist_data_and_interface, PATH_MODELS,record_keeper, device,extra_new_cat_multi=1)
-print("\n\n\n\nEXTRA SYNTHETIC SAMPLES (x2 multiplier)")
-Utils.test_synthetic_samples_versus_normal(mnist_data_and_interface, emnist_data_and_interface, PATH_MODELS,record_keeper,device,extra_new_cat_multi=0.5)
-print("\n\n\n\nEXTRA SYNTHETIC SAMPLES (x3 multiplier)")
-Utils.test_synthetic_samples_versus_normal(mnist_data_and_interface, emnist_data_and_interface, PATH_MODELS,record_keeper,device,extra_new_cat_multi=0.25)
+# print("\n\n\n\nEXTRA SYNTHETIC SAMPLES (x0.8 multiplier)")
+# Utils.test_synthetic_samples_versus_normal(mnist_data_and_interface, emnist_data_and_interface, PATH_MODELS,record_keeper,device,extra_new_cat_multi=1.25)
+# print("\n\n\n\nEXTRA SYNTHETIC SAMPLES (x0.5 multiplier)")
+# Utils.test_synthetic_samples_versus_normal(mnist_data_and_interface, emnist_data_and_interface, PATH_MODELS,record_keeper,device,extra_new_cat_multi=2)
+# print("\n\n\n\nEXTRA SYNTHETIC SAMPLES (x1 multiplier)")
+# Utils.test_synthetic_samples_versus_normal(mnist_data_and_interface, emnist_data_and_interface, PATH_MODELS,record_keeper, device,extra_new_cat_multi=1)
 
 
 # i =1

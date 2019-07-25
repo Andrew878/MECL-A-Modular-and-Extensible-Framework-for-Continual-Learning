@@ -55,13 +55,13 @@ class DataSetAndInterface:
         r = 3
         c = 3
         for i in range(x, r * c):
-            img, cat = self.dataset['val']['VAE'][i]
+            img, cat = self.dataset['train']['VAE'][i]
             img = img.view(28, 28).data
             img = img.numpy()
             ax = fig1.add_subplot(r, c, i - x + 1)
             ax.axis('off')
-            ax.set_title(cat)
-            ax.imshow(img, cmap='gray_r')
+            #ax.set_title(cat)
+            ax.imshow(img,cmap='gray')
         plt.ioff()
         plt.show()
 
@@ -126,19 +126,19 @@ class DataSetAndInterface:
 
         """https://discuss.pytorch.org/t/how-to-use-one-class-of-number-in-mnist/26276"""
 
-        is_count_freq = True
-        is_plot_output = True
+        is_count_freq = False
+        is_plot_output = False
 
-        print(self.label_to_index_dict)
-        print(category_subset)
+        #print(self.label_to_index_dict)
+        #print(category_subset)
         category_subset_indices = [self.label_to_index_dict[i] for i in category_subset]
-        print(category_subset_indices)
+        #print(category_subset_indices)
 
 
         subset_dataset = copy.deepcopy(self.dataset[split][branch_component])
         #subset_dataset_targets = copy.deepcopy(self.dataset_targets[split][branch_component])
 
-        print("**********",branch_component, split)
+        print("********** Preparing subset dataset",branch_component, split)
         #print(idx)
 
         if is_count_freq:
@@ -152,7 +152,7 @@ class DataSetAndInterface:
         idx = torch.zeros(len(subset_dataset),dtype=torch.uint8)
         for cat_index in category_subset_indices:
             # print(cat_index)
-            print(subset_dataset.targets)
+            #print(subset_dataset.targets)
             id_cat = subset_dataset.targets == cat_index
             # print("id_cat",id_cat)
             # print("idx",id_cat)
@@ -230,7 +230,7 @@ class DataSetAndInterface:
     def add_outside_data_to_data_set(self, datasetAndInterfaceTwo, sub_set_list_cats_two=[]):
 
         #sub_set_list_cats_two = ['z','y']
-        is_count_freq = True
+        is_count_freq = False
         is_plot_true = False
 
         print("Real to Real num cats", self.num_categories)
@@ -267,7 +267,7 @@ class DataSetAndInterface:
                 #print(subset_dataset_two[split][model].targets)
                 print("REAL ONLY model", model, "split", split, "len(self.dataset[split][model])", len(self.dataset[split][model]),"len(subset_dataset_two)",len(subset_dataset_two) )
                 self.dataset[split][model] = subset_dataset_two + self.dataset[split][model]
-                print("REAL ONLY model", model, "split", split, "len(self.dataset[split][model])", len(self.dataset[split][model]))
+                #print("REAL ONLY model", model, "split", split, "len(self.dataset[split][model])", len(self.dataset[split][model]))
                 #print("real combined database targets", self.dataset[split][model].targets)
                 #self.dataset[split][model] = torch.utils.data.ConcatDataset([self.dataset[split][model], datasetAndInterfaceTwo.dataset[split][model]])
                 #print(self.dataset[split][model])

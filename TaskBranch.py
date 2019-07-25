@@ -1,10 +1,11 @@
 import torch
 import torch.optim
+import torchvision.transforms.functional as TF
 import CVAE
 import Utils
 import time
 import copy
-from torchvision import models
+from torchvision import models, transforms
 import torch.nn as nn
 import numpy as np
 import mpu
@@ -151,7 +152,7 @@ class TaskBranch:
         torch.cuda.empty_cache()
 
     def run_a_VAE_epoch_calculate_loss(self, data_loader, is_train, teacher_VAE=None, is_synthetic=False,
-                                       is_cat_info_required=False):
+                                       is_cat_info_required=False, sample_limit = float('Inf')):
 
         if is_train:
             self.VAE_most_recent.train()
@@ -180,24 +181,6 @@ class TaskBranch:
             y = Utils.idx2onehot(y.view(-1, 1), self.num_categories_in_task)
             y = y.to(self.device)
 
-            # get synthetic samples, and blend them into the batch
-            # if is_synthetic and teacher_VAE != None:
-            #
-            #     # FIX EPOCHSSSS
-            #
-            #     if (is_train):
-            #         set = 'train'
-            #     else:
-            #         set = 'val'
-            #
-            #     synthetic_samples_x, synthetic_samples_y = teacher_VAE.generate_synthetic_set_all_cats(
-            #         synthetic_data_list_unique_label=self.synthetic_samples_for_reuse[set],
-            #         number_per_category=data_loader.batch_size, batch_number=i, epoch_number=0)
-            #
-            #     synthetic_samples_x.append(x)
-            #     x = torch.cat((tuple(synthetic_samples_x)), dim=0).to(self.device)
-            #     synthetic_samples_y.append(y)
-            #     y = torch.cat((tuple(synthetic_samples_y)), dim=0).to(self.device)
 
             # update the gradients to zero
             if is_train:
@@ -221,6 +204,10 @@ class TaskBranch:
             if (is_train):
                 loss.backward()
                 self.VAE_optimizer.step()
+
+            # To restrict training size
+            if sample_limit < (i*data_loader.batch_size):
+                break
 
         return loss_sum
 
@@ -258,7 +245,7 @@ class TaskBranch:
 
             # create a new fully connected final layer for training
             #print("self.num_categories_in_task", self.num_categories_in_task)
-            self.CNN_most_recent.fc = nn.Linear(num_ftrs, self.num_categories_in_task)
+            self.CNN_most_recent.fc = nn.Sequential(nn.Linear(num_ftrs, self.num_categories_in_task),nn.LogSoftmax(dim=1))
 
             if is_frozen == True:
                 # only fc layer being optimised
@@ -366,12 +353,18 @@ class TaskBranch:
                                                                                       only_return_best=True,
                                                                                       is_standardised_distance_check=is_standardised_distance_check)
 
-    def given_task_data_set_find_task_relatedness(self, new_task_data_loader, num_samples_to_check):
+    def given_task_data_set_find_task_relatedness(self, new_task_data_loader, num_samples_to_check,shear_degree = 0):
 
         reconstruction_error_sum = 0
         sample_count = 0
         for i, (x, y) in enumerate(new_task_data_loader):
 
+            if shear_degree != 0:
+                #print(x.size())
+                x = torch.squeeze(x)
+                #print(x.size())
+                shear_trans = transforms.Compose([transforms.ToPILImage(),lambda img: transforms.functional.affine(img, angle=0,translate=(0,0), scale=1, shear=shear_degree),transforms.ToTensor()])
+                x = shear_trans(x).float()
 
             reconstruction_error_sum += self.given_observation_find_lowest_reconstruction_error(x,False)[0][1]
 
@@ -391,7 +384,7 @@ class TaskBranch:
     def generate_single_random_sample(self, category, is_random_cat=False):
         return self.VAE_most_recent.generate_single_random_sample(category, is_random_cat)
 
-    def run_a_CNN_epoch_calculate_loss(self, data_loader, criterion, is_train, samples_limited_percentage = 1):
+    def run_a_CNN_epoch_calculate_loss(self, data_loader, criterion, is_train, samples_limited_percentage = 1, sample_limit = float('Inf')):
 
         running_loss = 0.0
         running_corrects = 0
@@ -449,6 +442,10 @@ class TaskBranch:
             if is_train:
                 loss.backward()
                 self.CNN_optimizer.step()
+
+            # To restrict training size
+            if sample_limit < (i * data_loader.batch_size):
+                break
 
         return loss_sum, running_corrects.double()
 
@@ -636,3 +633,27 @@ class TaskBranch:
         epoch_record = EpochRecord.EpochRecord(test_name, self.task_name, str(self.num_VAE_epochs), str(self.num_CNN_epochs), total_count, self.num_categories_in_task, total_average_recon,total_accuracy, self.categories_list, recon_per_class, accuracy_per_class, random_image_per_class_list=None)
 
         self.record_keeper.record_iteration_accuracy(test_name, epoch_record)
+
+    def generate_samples_to_display(self):
+
+        self.VAE_most_recent.eval()
+        self.VAE_most_recent.to(self.device)
+        z = self.fixed_noise[0]
+
+        fig1 = plt.figure(figsize=(20, 10))
+        r = 2
+        c = round(self.num_categories_in_task/2)
+
+        for cat in range(0,self.num_categories_in_task):
+
+            img = self.VAE_most_recent.generate_single_random_sample(cat ,z).cpu()
+            img = img.numpy()
+            ax = fig1.add_subplot(r, c, cat + 1)
+            ax.axis('off')
+            ax.set_title(cat)
+            ax.imshow(img, cmap='gray')
+
+        plt.ioff()
+        plt.show()
+
+        self.VAE_most_recent.cpu()

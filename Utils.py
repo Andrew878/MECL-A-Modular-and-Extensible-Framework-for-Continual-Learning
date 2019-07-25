@@ -196,7 +196,7 @@ def test_pre_trained_versus_non_pre_trained(new_task_to_be_trained, template_tas
 
 
 def test_synthetic_samples_versus_normal(original_task_datasetInterface, added_task_datasetInterface, PATH_MODELS,record_keeper,
-                                         device='cuda', new_classes_per_increment=1, number_increments=3 , extra_new_cat_multi=1):
+                                         device='cuda', new_classes_per_increment=1, number_increments=4, extra_new_cat_multi=1):
     print("***** Testing pseudo-rehearsal versus real samples")
 
     new_class_index = 26
@@ -399,4 +399,86 @@ def given_test_set_compare_synthetic_and_normal_approaches(task_branch_synth, ta
         #     print("For:",count, category," Ave. Recon:",recon_ave," Ave. Accuracy:",accuracy)
         #
         # print("For all (",total_count,"): Ave. Recon:",total_recon/total_count," Ave. Accuracy:",total_correct/total_count)
+
+
+def compare_pretrained_task_branches(original_task_datasetInterface, added_task_datasetInterface, PATH_MODELS,record_keeper):
+
+
+    device = 'cuda'
+    task_DIS_orig = copy.deepcopy(original_task_datasetInterface)
+    task_DIS_added = copy.deepcopy(added_task_datasetInterface)
+    task_DIS_orig.add_outside_data_to_data_set(task_DIS_added, ['z'])
+    combined_task_branch_synthetic = task.TaskBranch(task_DIS_orig.name + " pseudo", task_DIS_orig,
+                                                     device, PATH_MODELS,record_keeper)
+
+    combined_task_branch_no_synthetic = task.TaskBranch(task_DIS_orig.name + str(['z']) + " real",
+                                                        task_DIS_orig, device, PATH_MODELS, record_keeper)
+
+
+    synth_tuple_z = ("VAE MNIST pseudo epochs100,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 101.06068173495206 increment1synth multi 1",
+    "CNN MNIST pseudo epochs10,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 0.992840909090909 increment1synth multi 1")
+    real_tuple_z = ("VAE MNIST['z'] real epochs100,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 92.68595929181134 increment1synth multi 1",
+    "CNN MNIST['z'] real epochs10,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 0.9955555555555555 increment1synth multi 1")
+
+    combined_task_branch_synthetic.load_existing_VAE(str(PATH_MODELS + str(synth_tuple_z[0])), False)
+    combined_task_branch_synthetic.load_existing_CNN(str(PATH_MODELS + str(synth_tuple_z[1])))
+
+    combined_task_branch_no_synthetic.load_existing_VAE(str(PATH_MODELS + str(real_tuple_z[0])),False)
+    combined_task_branch_no_synthetic.load_existing_CNN(str(PATH_MODELS + str(real_tuple_z[1])))
+
+    combined_task_branch_synthetic.generate_samples_to_display()
+    combined_task_branch_no_synthetic.generate_samples_to_display()
+
+    given_test_set_compare_synthetic_and_normal_approaches(combined_task_branch_synthetic,combined_task_branch_no_synthetic, task_DIS_orig,['z'], 1)
+
+    record_keeper.record_to_file("real_versus fake continual learning adding " + str(['z']) + " synth multi " + str(1))
+
+
+########################
+
+    task_DIS_orig = copy.deepcopy(original_task_datasetInterface)
+    task_DIS_added = copy.deepcopy(added_task_datasetInterface)
+    task_DIS_orig.add_outside_data_to_data_set(task_DIS_added, ['z','y'])
+    combined_task_branch_synthetic = task.TaskBranch(task_DIS_orig.name + " pseudo", task_DIS_orig,
+                                                     device, PATH_MODELS, record_keeper)
+
+    combined_task_branch_no_synthetic = task.TaskBranch(task_DIS_orig.name + str(['z', 'y']) + " real",
+                                                        task_DIS_orig, device, PATH_MODELS, record_keeper)
+
+    synth_tuple_z_y = ("VAE MNIST pseudo epochs100,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 107.99619313557943 increment2synth multi 1",
+    "CNN MNIST pseudo epochs10,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 0.9989583333333334 increment2synth multi 1")
+    real_tuple_z_y = ("VAE MNIST['z', 'y'] real epochs100,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 94.45959071718413 increment2synth multi 1",
+    "CNN MNIST['z', 'y'] real epochs10,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 0.9941379310344827 increment2synth multi 1")
+
+    combined_task_branch_synthetic.load_existing_VAE(PATH_MODELS + str(synth_tuple_z_y[0]), False)
+    combined_task_branch_synthetic.load_existing_CNN(PATH_MODELS + str(synth_tuple_z_y[1]))
+
+    combined_task_branch_no_synthetic.load_existing_VAE(PATH_MODELS + str(real_tuple_z_y[0]), False)
+    combined_task_branch_no_synthetic.load_existing_CNN(PATH_MODELS + str(real_tuple_z_y[1]))
+
+    combined_task_branch_synthetic.generate_samples_to_display()
+    combined_task_branch_no_synthetic.generate_samples_to_display()
+
+    given_test_set_compare_synthetic_and_normal_approaches(combined_task_branch_synthetic,combined_task_branch_no_synthetic, task_DIS_orig,['z','y'], 1)
+
+    record_keeper.record_to_file("real_versus fake continual learning adding " + str(['z', 'y']) + " synth multi " + str(1))
+
+def test_concept_drift_for_single_task(task_branch, shear_degree_max,shear_degree_increments, split, num_samples_to_check=100):
+
+        print("*** Testing how task relativity changes with concept drift: ", task_branch.task_name)
+
+        shear_degree_increment_num  = round(shear_degree_max/shear_degree_increments)
+
+        for increment in range(0,shear_degree_increment_num+1):
+
+            shear_degree = increment*shear_degree_increments
+
+            dataloader = task_branch.dataset_interface.return_data_loaders(branch_component='VAE', BATCH_SIZE=1)[split]
+
+            reconstruction_error_average, task_relatedness = task_branch.given_task_data_set_find_task_relatedness(
+                dataloader, num_samples_to_check=num_samples_to_check, shear_degree=shear_degree)
+
+            print("   --- With shear degree:", shear_degree)
+            print("   --- Reconstruction error average", reconstruction_error_average, " Task relatedness",task_relatedness, "Number of samples:", num_samples_to_check)
+
 
