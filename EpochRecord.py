@@ -16,7 +16,7 @@ class EpochRecord:
         self.accuracy_per_class = str(accuracy_per_class)
         self.recon_per_class = recon_per_class
         self.random_image_per_class_list = random_image_per_class_list
-        self.delimeter = ","
+        self.delimeter = "&&"
         self.accuracy_per_class_header = ""
 
         accuracy_per_class_string = ""

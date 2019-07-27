@@ -7,7 +7,7 @@ class RecordKeeper:
 
         self.synth_versus_real = {}
 
-        self.delimiter = ','
+        self.delimiter = '&&'
         self.header_string = ""
 
 

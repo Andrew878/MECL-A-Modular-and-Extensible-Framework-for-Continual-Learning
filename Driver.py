@@ -10,8 +10,9 @@ import Utils
 import Gate
 import CustomDataSetAndLoaderForSynthetic
 import RecordKeeper
+from Invert import Invert
 
-
+#%matplotlib inline
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -27,6 +28,7 @@ PATH_ROOT = "/cs/scratch/al278/"
 PATH_DATA_MNIST = str(PATH_ROOT)+"MNIST"
 PATH_DATA_FashionMNIST = str(PATH_ROOT) + "FashionMNIST"
 PATH_DATA_EMNIST = str(PATH_ROOT) + "EMNIST"
+PATH_DATA_SVHN = str(PATH_ROOT) + "SVHN"
 PATH_MODELS = str(PATH_ROOT) + "properwithreg/"
 record_keeper = RecordKeeper.RecordKeeper(PATH_MODELS)
 
@@ -218,20 +220,98 @@ transforms_VAE_one_channel_EMNIST = {
                     # transforms.Normalize(normalise_MNIST_mean, normalise_MNIST_std)
                 ]),
             }
+
+transforms_CNN_SVHN = {
+                'train': transforms.Compose([
+                    transforms.Grayscale(),
+                    Invert(),
+                    transforms.Resize(256),
+                    transforms.RandomResizedCrop(224),
+                    transforms.RandomRotation(10),
+                    transforms.ToTensor(),
+                    transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
+                    transforms.Normalize(normalise_for_PIL_mean, normalise_for_PIL_std)
+                ]),
+                'val': transforms.Compose([
+                    transforms.Grayscale(),
+                    Invert(),
+                    transforms.Resize(256),
+                    transforms.CenterCrop(224),
+                    transforms.ToTensor(),
+                    transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
+                    transforms.Normalize(normalise_for_PIL_mean, normalise_for_PIL_std)
+                ]),
+                'test': transforms.Compose([
+                    transforms.Grayscale(),
+                    Invert(),
+                    transforms.Resize(256),
+                    transforms.CenterCrop(224),
+                    transforms.ToTensor(),
+                    transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
+                    transforms.Normalize(normalise_for_PIL_mean, normalise_for_PIL_std)
+                ]),
+                'test_to_image': transforms.Compose([
+                    transforms.ToPILImage(),
+                    transforms.Grayscale(),
+                    Invert(),
+                    transforms.Resize(256),
+                    transforms.CenterCrop(224),
+                    transforms.ToTensor(),
+                    transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
+                    transforms.Normalize(normalise_for_PIL_mean, normalise_for_PIL_std)
+                ]),
+            }
+
+transforms_VAE_one_channel_SVHN = {
+                'train': transforms.Compose([
+                    transforms.Grayscale(),
+                    Invert(),
+                    transforms.Resize(image_height_MNIST),
+                    #transforms.RandomRotation(10),
+                    transforms.ToTensor(),
+                    # transforms.Normalize(normalise_MNIST_mean, normalise_MNIST_std)
+                ]),
+                'val': transforms.Compose([
+                    transforms.Grayscale(),
+                    Invert(),
+                    transforms.Resize(image_height_MNIST),
+                    transforms.ToTensor(),
+                    # transforms.Normalize(normalise_MNIST_mean, normalise_MNIST_std)
+                ]),
+                'test': transforms.Compose([
+                    transforms.Grayscale(),
+                    Invert(),
+
+                    transforms.Resize(image_height_MNIST),
+                    transforms.ToTensor(),
+                    # transforms.Normalize(normalise_MNIST_mean, normalise_MNIST_std)
+                ]),
+            }
 all_transforms_EMNIST = {}
 all_transforms_EMNIST['VAE'] = transforms_VAE_one_channel_EMNIST
 all_transforms_EMNIST['CNN'] = transforms_CNN_one_channel_to_three_EMNIST
+all_transforms_SVHN = {}
+all_transforms_SVHN['VAE'] = transforms_VAE_one_channel_SVHN
+all_transforms_SVHN['CNN'] = transforms_CNN_SVHN
 
 image_datasets_EMNIST = {}
+image_datasets_SVHN = {}
 for x in ['train', 'val']:
     image_datasets_EMNIST[x] = {}
+    image_datasets_SVHN[x] = {}
 
     for y in ['VAE', 'CNN']:
         image_datasets_EMNIST[x][y] = datasets.EMNIST(PATH_DATA_EMNIST, train=(x == 'train'), download=True,
                                                       transform=all_transforms_EMNIST[y][x], split='letters')
         # EMNIST has a index system starting at 1. All others have index system starting at 0. This makes an adjustment
         image_datasets_EMNIST[x][y].targets = image_datasets_EMNIST[x][y].targets - 1
-        #print(image_datasets_EMNIST[x][y].data)
+
+        split = 'train'
+        if(x=='val'):
+            split = 'test'
+        image_datasets_SVHN[x][y] = datasets.SVHN(PATH_DATA_SVHN,  download=True,
+                                                      transform=all_transforms_SVHN[y][x], split=split)
+
 
 # image_datasets_EMNIST['test'] ={}
 # for model in ['VAE','CNN']:
@@ -240,9 +320,11 @@ for x in ['train', 'val']:
 
 
 emnist_data_and_interface = ds.DataSetAndInterface('EMNIST', image_datasets_EMNIST,PATH_DATA_EMNIST,all_transforms_EMNIST, image_channel_size_MNIST, image_height_MNIST, list_of_fixed_noise)
+svhn_data_and_interface = ds.DataSetAndInterface('SVHN', image_datasets_SVHN,PATH_DATA_SVHN,all_transforms_SVHN, image_channel_size_MNIST, image_height_MNIST, list_of_fixed_noise)
 mnist_task_branch = task.TaskBranch('MNIST', mnist_data_and_interface, device,PATH_MODELS,record_keeper)
 fashion_mnist_task_branch = task.TaskBranch('Fashion', fashion_mnist_data_and_interface, device, PATH_MODELS,record_keeper)
 emnist_task_branch = task.TaskBranch('EMNIST', emnist_data_and_interface, device, PATH_MODELS,record_keeper)
+svhn_task_branch = task.TaskBranch('SVHN', svhn_data_and_interface, device, PATH_MODELS,record_keeper)
 
 
 is_saving = False
@@ -302,10 +384,20 @@ task_branch_list = [mnist_task_branch,fashion_mnist_task_branch]
 gate = Gate.Gate()
 gate.add_task_branch(mnist_task_branch,fashion_mnist_task_branch)
 
-gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(fashion_mnist_data_and_interface,[],5000)
-gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(mnist_data_and_interface,[],5000)
+# gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(fashion_mnist_data_and_interface,[],100)
+# gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(mnist_data_and_interface,[],100)
+# gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(emnist_data_and_interface,[],100)
+# gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(svhn_data_and_interface,[],100)
 
-Utils.test_concept_drift_for_single_task(task_branch=mnist_task_branch, shear_degree_max=40,shear_degree_increments=10, split='train', num_samples_to_check=1000)
+#Utils.test_concept_drift_for_single_task(task_branch=mnist_task_branch, shear_degree_max=40,shear_degree_increments=10, split='train', num_samples_to_check=1000)
+
+
+print("New and improved synthetic")
+print("\n\n\n\nEXTRA SYNTHETIC SAMPLES (x1.0 multiplier)")
+Utils.test_synthetic_samples_versus_normal_increasing(mnist_data_and_interface,PATH_MODELS,record_keeper,extra_new_cat_multi=1)
+print("\n\n\n\nEXTRA SYNTHETIC SAMPLES (x0.8 multiplier)")
+Utils.test_synthetic_samples_versus_normal_increasing(mnist_data_and_interface,PATH_MODELS,record_keeper,extra_new_cat_multi=1.25)
+
 #Utils.compare_pretrained_task_branches(mnist_data_and_interface, emnist_data_and_interface, PATH_MODELS,record_keeper)
 
 #

@@ -74,7 +74,7 @@ class TaskBranch:
             print("create new VAE to handle ",self.num_categories_in_task, self.categories_list)
         # if using a pre-trained VAE
         else:
-            self.VAE_most_recent = copy.deepcopy(teacher_VAE).to(self.device)
+            self.VAE_most_recent = copy.deepcopy(teacher_VAE)
 
             # if adding a new task category to learn
             if (is_completely_new_task or is_new_categories_to_addded_to_existing_task):
@@ -115,7 +115,7 @@ class TaskBranch:
                 patience_counter = 1
 
                 # send to CPU to save on GPU RAM
-                best_model_wts = copy.deepcopy(self.VAE_most_recent.state_dict())
+                #best_model_wts = copy.deepcopy(self.VAE_most_recent.state_dict())
                 print(f'Epoch {epoch}, Train Loss: {train_loss:.2f}, Val Loss: {val_loss:.2f} ', time_elapsed,
                       "**** new best ****")
 
@@ -130,7 +130,7 @@ class TaskBranch:
         print('\nTraining complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
         print('Best val loss: {:4f}'.format(best_val_loss))
 
-        self.VAE_most_recent.load_state_dict(best_model_wts)
+        #self.VAE_most_recent.load_state_dict(best_model_wts)
 
         model_string = "VAE " + self.task_name + " epochs" + str(num_epochs) + ",batch" + str(
             batch_size) + ",z_d" + str(
@@ -140,6 +140,7 @@ class TaskBranch:
 
         self.VAE_most_recent_path = self.initial_directory_path + model_string
         self.overall_average_reconstruction_error = best_val_loss
+        self.VAE_most_recent.cpu()
 
         if is_save:
             torch.save(self.VAE_most_recent, self.VAE_most_recent_path)
@@ -148,7 +149,7 @@ class TaskBranch:
         #REMOVE COMMENT
        # self.obtain_VAE_recon_error_mean_and_std_per_class(self.initial_directory_path + model_string)
 
-        self.VAE_most_recent.cpu()
+        self.VAE_most_recent.send_all_to_CPU()
         torch.cuda.empty_cache()
 
     def run_a_VAE_epoch_calculate_loss(self, data_loader, is_train, teacher_VAE=None, is_synthetic=False,
@@ -183,8 +184,7 @@ class TaskBranch:
 
 
             # update the gradients to zero
-            if is_train:
-                self.VAE_optimizer.zero_grad()
+            self.VAE_optimizer.zero_grad()
 
             # forward pass
             # track history if only in train
@@ -204,6 +204,10 @@ class TaskBranch:
             if (is_train):
                 loss.backward()
                 self.VAE_optimizer.step()
+                self.VAE_optimizer.zero_grad()
+
+            del x,y,loss,reconstructed_x, z_mu, z_var
+            torch.cuda.empty_cache()
 
             # To restrict training size
             if sample_limit < (i*data_loader.batch_size):
@@ -220,9 +224,9 @@ class TaskBranch:
         if is_calculate_mean_std:
             print(self.task_name, " - Loaded VAE model, now calculating reconstruction error mean, std")
             self.obtain_VAE_recon_error_mean_and_std_per_class(PATH)
-        else:
-            self.by_category_mean_std_of_reconstruction_error = mpu.io.read(PATH + "mean,std.pickle")
-            self.overall_average_reconstruction_error = mpu.io.read(PATH + "overallmean.pickle")
+        #else:
+            # self.by_category_mean_std_of_reconstruction_error = mpu.io.read(PATH + "mean,std.pickle")
+            # self.overall_average_reconstruction_error = mpu.io.read(PATH + "overallmean.pickle")
 
     def create_and_train_CNN(self, model_id, num_epochs=30, batch_size=64, is_frozen=False, is_off_shelf_model=False,
                              epoch_improvement_limit=20, learning_rate=0.0003, betas=(0.999, .999), weight_decay = 0.0001, is_save=False):
@@ -443,6 +447,9 @@ class TaskBranch:
                 loss.backward()
                 self.CNN_optimizer.step()
 
+            del x,y,loss,preds,outputs
+            torch.cuda.empty_cache()
+
             # To restrict training size
             if sample_limit < (i * data_loader.batch_size):
                 break
@@ -626,7 +633,7 @@ class TaskBranch:
 
         total_average_recon = total_recon / total_count
         total_accuracy = total_correct / total_count
-        print("For all (", total_count, "): Ave. Recon:", total_average_recon, " Ave. Accuracy:", total_accuracy)
+        print("For all (", total_count, "): Ave. Recon:", total_average_recon, " Ave. Accuracy:", total_accuracy,"\n")
 
 
 
@@ -641,8 +648,9 @@ class TaskBranch:
         z = self.fixed_noise[0]
 
         fig1 = plt.figure(figsize=(20, 10))
-        r = 2
-        c = round(self.num_categories_in_task/2)
+        r = self.num_categories_in_task
+        c = 1
+        #c = round(self.num_categories_in_task/2)
 
         for cat in range(0,self.num_categories_in_task):
 

@@ -169,6 +169,8 @@ class CVAE(nn.Module):
 
     def loss(self,x, reconstructed_x, mean, log_var):
         # reconstruction loss (input, target)
+        reconstructed_x = torch.squeeze(reconstructed_x,1)
+        x= torch.squeeze(x,1)
         RCL = F.binary_cross_entropy(reconstructed_x, x, reduction='sum')
         # kl divergence loss
         KLD = -0.5 * torch.sum(1 + log_var - mean.pow(2) - log_var.exp())
@@ -292,3 +294,10 @@ class CVAE(nn.Module):
 
         return synthetic_data_list_x, synthetic_data_list_y
 
+    def send_all_to_GPU(self):
+        self.encoder.to(self.device)
+        self.decoder.to(self.device)
+
+    def send_all_to_CPU(self):
+        self.encoder.cpu()
+        self.decoder.cpu()

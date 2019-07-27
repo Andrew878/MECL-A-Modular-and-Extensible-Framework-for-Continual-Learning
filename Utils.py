@@ -320,12 +320,159 @@ def test_synthetic_samples_versus_normal(original_task_datasetInterface, added_t
             record_keeper.record_to_file("real_versus fake continual learning adding "+str(list_categories_to_add)+" synth multi "+str(extra_new_cat_multi))
 
 
-def given_test_set_compare_synthetic_and_normal_approaches(task_branch_synth, task_branch_real, dataSetInter,new_cats_added,extra_new_cat_multi):
+def test_synthetic_samples_versus_normal_increasing(original_task_datasetInterface, PATH_MODELS,record_keeper,
+                                         device='cuda',number_increments=10, extra_new_cat_multi=1):
+    print("***** Testing pseudo-rehearsal versus real samples")
+
+    new_class_index = 10
+    is_time_to_break = False
+
+    is_save = True
+    BATCH = 64
+    EPOCH_IMPROVE_LIMIT = 20
+    num_per_cat_gen_class_test = 1000
+    num_per_cat_gen_class_test = 1
+
+    EPOCH_CNN = 1
+    EPOCH_CNN = 10
+    BETA_CNN = (0.999, .999)
+    LEARNR_CNN = 0.00025
+
+    EPOCH_VAE = 1
+    EPOCH_VAE = 50
+    LAT_DIM_VAE = 50
+    BETA_VAE = (0.5, 0.999)
+    LEARNR_VAE = 0.00035
+
+    cat_list_all = original_task_datasetInterface.categories_list
+
+    combined_task_branch_synthetic = None
+
+
+    for increment in range(9, number_increments):
+
+        task_DIS_orig = copy.deepcopy(original_task_datasetInterface)
+        category_list_subset = cat_list_all[0:increment+1]
+        task_DIS_orig.reduce_categories_in_dataset(category_list_subset)
+        task_DIS_orig_for_synth = copy.deepcopy(task_DIS_orig)
+
+
+        name = "increment" + str(increment) + "synth multi "+ str(extra_new_cat_multi)
+
+        combined_task_branch_synthetic = task.TaskBranch(task_DIS_orig_for_synth.name + " pseudo",
+                                                         task_DIS_orig_for_synth,
+                                                         device, PATH_MODELS, record_keeper)
+        combined_task_branch_synthetic.load_existing_VAE(PATH_MODELS+"VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 108.8118243938762 increment8synth multi 1",False)
+
+        if (increment == 0):
+            combined_task_branch_synthetic = task.TaskBranch(task_DIS_orig_for_synth.name + " pseudo", task_DIS_orig_for_synth,
+                                                             device, PATH_MODELS,record_keeper)
+
+            print("Starting point, just MNIST....")
+            print("Training VAE - Starting")
+
+            print("\n Beginning point only ",category_list_subset)
+
+            combined_task_branch_synthetic.create_and_train_VAE(model_id=name, num_epochs=EPOCH_VAE, batch_size=BATCH,
+                                                                hidden_dim=10,
+                                                                latent_dim=LAT_DIM_VAE,
+                                                                is_synthetic=False, is_take_existing_VAE=False,
+                                                                teacher_VAE=None,
+                                                                is_new_categories_to_addded_to_existing_task=False,
+                                                                is_completely_new_task=True,
+                                                                epoch_improvement_limit=EPOCH_IMPROVE_LIMIT,
+                                                                learning_rate=LEARNR_VAE, betas=BETA_VAE,
+                                                                is_save=True)
+
+            combined_task_branch_synthetic.create_and_train_CNN(model_id=name, num_epochs=EPOCH_CNN, batch_size=BATCH,
+                                                                is_frozen=False,
+                                                                is_off_shelf_model=True,
+                                                                epoch_improvement_limit=EPOCH_IMPROVE_LIMIT,
+                                                                learning_rate=LEARNR_CNN,
+                                                                betas=BETA_CNN, is_save=is_save)
+
+            #combined_task_branch_synthetic.load_existing_VAE(PATH_MODELS+"VAE MNIST epochs200,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 89.18212963867188 v2",False)
+
+            given_test_set_compare_synthetic_and_normal_approaches([combined_task_branch_synthetic], task_DIS_orig,category_list_subset, extra_new_cat_multi)
+
+            #test_generating_and_classification_ability_multi_tasks([combined_task_branch_synthetic], number_per_category=num_per_cat_gen_class_test, device=device)
+
+
+
+            record_keeper.record_to_file("real_versus fake continual learning adding "+str(category_list_subset[0])+" to "+str(category_list_subset[-1])+" synth multi "+str(extra_new_cat_multi))
+
+            del task_DIS_orig
+            torch.cuda.empty_cache()
+
+        else:
+
+
+
+            print("\n------------ Real Samples", category_list_subset)
+            combined_task_branch_no_synthetic = task.TaskBranch(task_DIS_orig.name +str(category_list_subset[0])+" to "+str(category_list_subset[-1])+ " real",task_DIS_orig, device, PATH_MODELS, record_keeper)
+
+            print("\nReal Samples - CNN")
+            combined_task_branch_no_synthetic.create_and_train_CNN(model_id=name, num_epochs=EPOCH_CNN,
+                                                                   batch_size=BATCH, is_frozen=False,
+                                                                   is_off_shelf_model=True,
+                                                                   epoch_improvement_limit=EPOCH_IMPROVE_LIMIT,
+                                                                   learning_rate=LEARNR_CNN,
+                                                                   betas=BETA_CNN, is_save=is_save)
+            print("\nReal Samples - VAE")
+            combined_task_branch_no_synthetic.create_and_train_VAE(model_id=name, num_epochs=EPOCH_VAE, hidden_dim=10,
+                                                                   latent_dim=LAT_DIM_VAE,
+                                                                   is_synthetic=False,is_take_existing_VAE=False, is_new_categories_to_addded_to_existing_task=False,
+                                                                   epoch_improvement_limit=EPOCH_IMPROVE_LIMIT,
+                                                                   learning_rate=LEARNR_VAE,
+                                                                   betas=BETA_VAE, is_save=is_save, batch_size=BATCH)
+
+
+            print("\n------------ Pseudo Samples ",category_list_subset)
+
+
+            print("\nPseudo Samples - create samples")
+            combined_task_branch_synthetic.create_blended_dataset_with_synthetic_samples(task_DIS_orig,[category_list_subset[-1]],extra_new_cat_multi)
+
+
+
+            print("\nPseudo Samples - Training VAE")
+            combined_task_branch_synthetic.create_and_train_VAE(model_id=name, num_epochs=EPOCH_VAE, batch_size=BATCH,
+                                                                hidden_dim=10,
+                                                                latent_dim=LAT_DIM_VAE,
+                                                                is_synthetic=False, is_take_existing_VAE=True,
+                                                                teacher_VAE=combined_task_branch_synthetic.VAE_most_recent,
+                                                                is_new_categories_to_addded_to_existing_task=True,
+                                                                is_completely_new_task=False,
+                                                                epoch_improvement_limit=EPOCH_IMPROVE_LIMIT,
+                                                                learning_rate=LEARNR_VAE, betas=BETA_VAE,
+                                                                is_save=is_save)
+            print("\nPseudo Samples - CNN")
+            combined_task_branch_synthetic.create_and_train_CNN(model_id=name, num_epochs=EPOCH_CNN, batch_size=BATCH,
+                                                                is_frozen=False,
+                                                                is_off_shelf_model=True,
+                                                                epoch_improvement_limit=EPOCH_IMPROVE_LIMIT,
+                                                                learning_rate=LEARNR_CNN,
+                                                                betas=BETA_CNN, is_save=is_save)
+
+
+
+            given_test_set_compare_synthetic_and_normal_approaches([combined_task_branch_synthetic, combined_task_branch_no_synthetic], task_DIS_orig,
+                                                                   category_list_subset, extra_new_cat_multi)
+
+            #test_generating_and_classification_ability_multi_tasks([combined_task_branch_synthetic,combined_task_branch_no_synthetic], number_per_category=num_per_cat_gen_class_test, device=device)
+
+
+            record_keeper.record_to_file("real_versus fake continual learning adding "+str(category_list_subset)+" synth multi "+str(extra_new_cat_multi))
+
+            del task_DIS_orig, combined_task_branch_no_synthetic
+            torch.cuda.empty_cache()
+
+def given_test_set_compare_synthetic_and_normal_approaches(task_branch_list, dataSetInter,new_cats_added,extra_new_cat_multi):
 
     device = 'cuda'
     split_to_measure_against = 'val'
 
-    for task_branch in [task_branch_synth, task_branch_real]:
+    for task_branch in task_branch_list:
 
         task_branch.run_end_of_training_benchmarks("real_versus fake continual learning adding "+str(new_cats_added)+" synth multi "+str(extra_new_cat_multi),dataSetInter)
 
@@ -481,4 +628,24 @@ def test_concept_drift_for_single_task(task_branch, shear_degree_max,shear_degre
             print("   --- With shear degree:", shear_degree)
             print("   --- Reconstruction error average", reconstruction_error_average, " Task relatedness",task_relatedness, "Number of samples:", num_samples_to_check)
 
+
+def load_VAE_models_and_display_syn_images(PATH_MODELS, task_branch):
+    model_string = []
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 101.1282752212213 increment0synth multi 1")
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 78.45619751514317 increment1synth multi 1")
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 89.60624052141372 increment2synth multi 1")
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 95.91765151826462 increment3synth multi 1")
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 98.84272441048243 increment4synth multi 1")
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 102.96877034505208 increment5synth multi 1")
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 104.12568975369538 increment6synth multi 1")
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 104.48726003921449 increment7synth multi 1")
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 108.8118243938762 increment8synth multi 1")
+    model_string.append("")
+
+    i=1
+    for string in model_string:
+        task_branch.combined_task_branch_synthetic.load_existing_VAE(PATH_MODELS+ string)
+        task_branch.num_categories_in_task = 1
+        task_branch.generate_samples_to_display()
+        i += 1
 
