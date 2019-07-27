@@ -12,6 +12,7 @@ import mpu
 import CustomDataSetAndLoaderForSynthetic
 import matplotlib.pyplot as plt
 import EpochRecord
+import queue
 import RecordKeeper
 
 
@@ -39,6 +40,14 @@ class TaskBranch:
         self.CNN_optimizer = None
 
         self.overall_average_reconstruction_error = None
+        self.queue_length = 10000
+        self.history_queue_of_task_relatedness = queue.Queue(maxsize=self.queue_length)
+        self.is_need_to_recalibrate_queue = False
+        self.queue_sum = 0
+        self.task_relatedness_threshold = 0.9
+
+
+
         self.dataset_splits = self.dataset_interface.dataset_splits
         self.by_category_record_of_reconstruction_error = None
         self.by_category_mean_std_of_reconstruction_error = None
@@ -48,6 +57,8 @@ class TaskBranch:
         self.fixed_noise = self.dataset_interface.list_of_fixed_noise
 
         self.record_keeper = record_keeper
+
+
 
     def refresh_variables_for_mutated_task(self):
         self.mutated_count += 1
@@ -84,10 +95,11 @@ class TaskBranch:
                 # update CVAE class parameters
                 self.VAE_most_recent.update_y_layers(fc3, fc2)
                 self.VAE_most_recent.n_categories = self.num_categories_in_task
-                self.VAE_most_recent.to(self.device)
+
+            self.VAE_most_recent.to(self.device)
 
         patience_counter = 0
-        best_val_loss = 100000000000
+        best_train_loss = 100000000000
         self.VAE_optimizer = torch.optim.Adam(self.VAE_most_recent.parameters(), lr=learning_rate, betas=betas,weight_decay=weight_decay)
 
         #if (not is_new_categories_to_addded_to_existing_task):
@@ -110,8 +122,8 @@ class TaskBranch:
             val_loss /= self.dataset_interface.val_set_size
             time_elapsed = time.time() - start_timer
 
-            if best_val_loss > val_loss:
-                best_val_loss = val_loss
+            if best_train_loss > train_loss:
+                train_val_loss = train_loss
                 patience_counter = 1
 
                 # send to CPU to save on GPU RAM
@@ -128,19 +140,24 @@ class TaskBranch:
                 break
 
         print('\nTraining complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
-        print('Best val loss: {:4f}'.format(best_val_loss))
+        print('Best train loss: {:4f}'.format(best_train_loss))
 
         #self.VAE_most_recent.load_state_dict(best_model_wts)
 
         model_string = "VAE " + self.task_name + " epochs" + str(num_epochs) + ",batch" + str(
             batch_size) + ",z_d" + str(
             latent_dim) + ",synth" + str(is_synthetic) + ",rebuilt" + str(is_take_existing_VAE) + ",lr" + str(
-            learning_rate) + ",betas" + str(betas) + "lowest_error " + str(best_val_loss) + " "
+            learning_rate) + ",betas" + str(betas) + "lowest_error " + str(best_train_loss) + " "
         model_string += model_id
 
         self.VAE_most_recent_path = self.initial_directory_path + model_string
-        self.overall_average_reconstruction_error = best_val_loss
+        self.overall_average_reconstruction_error = best_train_loss
         self.VAE_most_recent.cpu()
+
+        # reset related task queue variables
+        self.history_queue_of_task_relatedness = queue.Queue(maxsize=self.queue_length)
+        self.is_need_to_recalibrate_queue = False
+        self.queue_sum = 0
 
         if is_save:
             torch.save(self.VAE_most_recent, self.VAE_most_recent_path)
@@ -351,11 +368,24 @@ class TaskBranch:
 
     def given_observation_find_lowest_reconstruction_error(self, x, is_standardised_distance_check=True):
 
-        return self.VAE_most_recent.get_sample_reconstruction_error_from_all_category(x,
+        lowest_recon_error = self.VAE_most_recent.get_sample_reconstruction_error_from_all_category(x,
                                                                                       self.by_category_mean_std_of_reconstruction_error,
                                                                                       is_random=False,
                                                                                       only_return_best=True,
                                                                                       is_standardised_distance_check=is_standardised_distance_check)
+        if self.history_queue_of_task_relatedness.full():
+            old_val = self.history_queue_of_task_relatedness.get()
+            self.queue_sum += lowest_recon_error - old_val
+            self.history_queue_of_task_relatedness.put(lowest_recon_error)
+            average_task_relatedness = self.queue_sum/self.queue_length
+            if average_task_relatedness < self.task_relatedness_threshold:
+                self.is_need_to_recalibrate_queue = True
+        else:
+            self.history_queue_of_task_relatedness.put(lowest_recon_error)
+
+
+        return lowest_recon_error
+
 
     def given_task_data_set_find_task_relatedness(self, new_task_data_loader, num_samples_to_check,shear_degree = 0):
 
@@ -363,12 +393,7 @@ class TaskBranch:
         sample_count = 0
         for i, (x, y) in enumerate(new_task_data_loader):
 
-            if shear_degree != 0:
-                #print(x.size())
-                x = torch.squeeze(x)
-                #print(x.size())
-                shear_trans = transforms.Compose([transforms.ToPILImage(),lambda img: transforms.functional.affine(img, angle=0,translate=(0,0), scale=1, shear=shear_degree),transforms.ToTensor()])
-                x = shear_trans(x).float()
+            x = x.float()
 
             reconstruction_error_sum += self.given_observation_find_lowest_reconstruction_error(x,False)[0][1]
 
@@ -470,13 +495,16 @@ class TaskBranch:
             max_value, preds = torch.max(output, 1)
 
 
-        return preds
+        return preds, max_value
 
-    def create_blended_dataset_with_synthetic_samples(self, new_real_datasetInterface,new_categories_to_add_to_existing_task,extra_new_cat_multi=1):
+    def create_blended_dataset_with_synthetic_samples(self, new_real_datasetInterface,new_categories_to_add_to_existing_task,extra_new_cat_multi=1, is_single_task_recal_process= False):
 
+        if len(new_categories_to_add_to_existing_task) ==0:
+            new_categories_to_add_to_existing_task = new_real_datasetInterface.categories_list
 
         synthetic_cat_number = len(self.categories_list)
-        self.categories_list.extend(new_categories_to_add_to_existing_task)
+        if not is_single_task_recal_process:
+                self.categories_list.extend(new_categories_to_add_to_existing_task)
         print(self.categories_list)
         self.synthetic_samples_for_reuse = {i: [] for i in self.dataset_splits}
 
