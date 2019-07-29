@@ -194,7 +194,7 @@ class CVAE(nn.Module):
             reconstructed_x, z_mu, z_var = self.encode_then_decode_without_randomness(x,y.float())
 
         loss = self.loss(x, reconstructed_x, z_mu, z_var)
-        return loss
+        return loss, reconstructed_x
 
     def get_sample_reconstruction_error_from_all_category(self, x, by_category_mean_std_of_reconstruction_error=None, is_random = False, only_return_best = True, is_standardised_distance_check = False):
         class_with_best_fit = 0
@@ -208,7 +208,7 @@ class CVAE(nn.Module):
 
         for category in range(0,self.n_categories):
 
-            loss= self.get_sample_reconstruction_error_from_single_category_without_randomness(x, category,is_random=False,is_already_single_tensor=False)
+            loss, reconstructed_x = self.get_sample_reconstruction_error_from_single_category_without_randomness(x, category,is_random=False,is_already_single_tensor=False)
 
 
             info_for_cat = (category, loss)
@@ -240,7 +240,7 @@ class CVAE(nn.Module):
                 return [info,(class_with_best_fit_std_dev,lowest_error_of_cat_std_dev)]
 
 
-            return [info]
+            return [info], reconstructed_x
 
         else:
             return list_by_cat

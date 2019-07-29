@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import EpochRecord
 import queue
 import RecordKeeper
+from scipy.ndimage import gaussian_filter
 
 
 class TaskBranch:
@@ -123,7 +124,7 @@ class TaskBranch:
             time_elapsed = time.time() - start_timer
 
             if best_train_loss > train_loss:
-                train_val_loss = train_loss
+                best_train_loss = train_loss
                 patience_counter = 1
 
                 # send to CPU to save on GPU RAM
@@ -246,7 +247,7 @@ class TaskBranch:
             # self.overall_average_reconstruction_error = mpu.io.read(PATH + "overallmean.pickle")
 
     def create_and_train_CNN(self, model_id, num_epochs=30, batch_size=64, is_frozen=False, is_off_shelf_model=False,
-                             epoch_improvement_limit=20, learning_rate=0.0003, betas=(0.999, .999), weight_decay = 0.0001, is_save=False):
+                             epoch_improvement_limit=20, learning_rate=0.0003, betas=(0.999, .999), weight_decay = 0.0001, is_save=False, is_synthetic_blend = False):
 
 
         self.num_CNN_epochs = num_epochs
@@ -286,7 +287,7 @@ class TaskBranch:
         dataloaders = self.dataset_interface.return_data_loaders('CNN', BATCH_SIZE=batch_size)
 
         start_timer = time.time()
-        best_val_acc = 0.0
+        best_train_acc = 0.0
         self.CNN_most_recent.to(self.device)
         patience_counter = 0
 
@@ -305,8 +306,8 @@ class TaskBranch:
 
             time_elapsed = time.time() - start_timer
 
-            if best_val_acc < val_acc:
-                best_val_acc = val_acc
+            if best_train_acc < train_acc:
+                best_train_acc = train_acc
                 patience_counter = 1
 
                 # send to CPU to save on GPU RAM
@@ -323,13 +324,13 @@ class TaskBranch:
                 break
 
         print('\nTraining complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
-        print('Best val acc: {:4f}'.format(best_val_acc))
+        print('Best val acc: {:4f}'.format(best_train_acc))
 
         self.CNN_most_recent.load_state_dict(best_model_wts)
 
         model_string = "CNN " + self.task_name + " epochs" + str(num_epochs) + ",batch" + str(
             batch_size) + ",pretrained" + str(is_off_shelf_model) + ",frozen" + str(is_frozen) + ",lr" + str(
-            learning_rate) + ",betas" + str(betas) + " accuracy " + str(best_val_acc.item()) + " "
+            learning_rate) + ",betas" + str(betas) + " accuracy " + str(best_train_acc.item()) + " "
         model_string += model_id
 
         self.CNN_most_recent_path = self.initial_directory_path + model_string
@@ -368,7 +369,7 @@ class TaskBranch:
 
     def given_observation_find_lowest_reconstruction_error(self, x, is_standardised_distance_check=True):
 
-        lowest_recon_error = self.VAE_most_recent.get_sample_reconstruction_error_from_all_category(x,
+        lowest_recon_error, __ = self.VAE_most_recent.get_sample_reconstruction_error_from_all_category(x,
                                                                                       self.by_category_mean_std_of_reconstruction_error,
                                                                                       is_random=False,
                                                                                       only_return_best=True,
@@ -413,7 +414,7 @@ class TaskBranch:
     def generate_single_random_sample(self, category, is_random_cat=False):
         return self.VAE_most_recent.generate_single_random_sample(category, is_random_cat)
 
-    def run_a_CNN_epoch_calculate_loss(self, data_loader, criterion, is_train, samples_limited_percentage = 1, sample_limit = float('Inf')):
+    def run_a_CNN_epoch_calculate_loss(self, data_loader, criterion, is_train, samples_limited_percentage = 1, sample_limit = float('Inf'),is_synthetic_blend = False):
 
         running_loss = 0.0
         running_corrects = 0
@@ -454,6 +455,7 @@ class TaskBranch:
                 _, preds = torch.max(outputs, 1)
                 #print(preds)
                 loss = criterion(outputs.to(self.device), y)
+                #print(loss)
 
             loss_sum += loss.item()
             running_corrects += torch.sum(preds == y.data)
@@ -519,7 +521,9 @@ class TaskBranch:
 
             for split in self.dataset_splits:
 
-                subset_dataset_real = new_real_datasetInterface.obtain_dataset_with_subset_of_categories(model,split,new_categories_to_add_to_existing_task)
+                #subset_dataset_real = new_real_datasetInterface.obtain_dataset_with_subset_of_categories(model,split,new_categories_to_add_to_existing_task)
+                # always VAE for synthetic
+                subset_dataset_real = new_real_datasetInterface.obtain_dataset_with_subset_of_categories('VAE',split,new_categories_to_add_to_existing_task)
 
                 real_db = subset_dataset_real
                 print(len(real_db))
@@ -579,7 +583,7 @@ class TaskBranch:
         # plt.ioff()
         # plt.show()
 
-    def run_end_of_training_benchmarks(self, test_name, dataset_interface = None):
+    def run_end_of_training_benchmarks(self, test_name, dataset_interface = None, is_save = True, is_gaussian_noise_required = False):
 
 
         if dataset_interface == None:
@@ -591,10 +595,11 @@ class TaskBranch:
 
         data_loader_CNN = dataset_interface.return_data_loaders('CNN', BATCH_SIZE=1)
         data_loader_VAE = dataset_interface.return_data_loaders('VAE', BATCH_SIZE=1)
+        data_loader_VAE2 = dataset_interface.return_data_loaders('VAE', BATCH_SIZE=1)
 
         self.VAE_most_recent.eval()
         self.CNN_most_recent.eval()
-        self.VAE_most_recent.to(self.device)
+        self.VAE_most_recent.send_all_to_GPU()
         self.CNN_most_recent.to(self.device)
 
         # To update record for mean and std deviation distance. This deletes old entries before calculating
@@ -616,27 +621,99 @@ class TaskBranch:
             by_category_record_of_recon_error_and_accuracy[y_original][0] += 1
             by_category_record_of_recon_error_and_accuracy[y_original][1] += loss.item()
 
-        for i, (x, y) in enumerate(data_loader_CNN['val']):
-            # reshape the data into [batch_size, 784]
-            # print(x.size())
-            # x = x.view(batch_size, 1, 28, 28)
-            x = x.to(self.device)
-            y_original = y.item()
-            y = y.to(self.device)
+        classified_nines = 0
 
-            with torch.no_grad():
-                outputs = self.CNN_most_recent(x)
-                _, preds = torch.max(outputs, 1)
-                # print(preds)
-                # criterion = nn.CrossEntropyLoss()
-                # loss = criterion(outputs.to(device), y)
+        if not is_gaussian_noise_required:
+            for i, (x, y) in enumerate(data_loader_CNN['val']):
+                # reshape the data into [batch_size, 784]
+                # print(x.size())
+                # x = x.view(batch_size, 1, 28, 28)
+                x = x.to(self.device)
+                y_original = y.item()
+                y = y.to(self.device)
 
-                correct = torch.sum(preds == y.data)
 
-            by_category_record_of_recon_error_and_accuracy[y_original][2] += correct.item()
+                with torch.no_grad():
+                    outputs = self.CNN_most_recent(x)
+                    _, preds = torch.max(outputs, 1)
+                    # print(preds)
+                    # criterion = nn.CrossEntropyLoss()
+                    # loss = criterion(outputs.to(device), y)
 
-        self.VAE_most_recent.cpu()
+                    correct = torch.sum(preds == y.data)
+
+                by_category_record_of_recon_error_and_accuracy[y_original][2] += correct.item()
+
+                if preds.item() == self.num_categories_in_task-1:
+                    classified_nines += 1
+
+
+                if(i<10):
+                    print("actual",y.data,"classified",preds)
+                    fig1 = plt.figure(figsize=(5, 5))
+                    ax = fig1.add_subplot(1, 3, 1)
+                    ax.axis('off')
+    #                generated_x, _, _ = self.VAE_most_recent.encode_then_decode_without_randomness(x,y)
+                    ax.imshow(x[0][0].cpu().numpy(), cmap='gray')
+
+                    plt.ioff()
+                    plt.show()
+
+        else:
+            for i, (x, y) in enumerate(data_loader_VAE2['val']):
+                # reshape the data into [batch_size, 784]
+                # print(x.size())
+                # x = x.view(batch_size, 1, 28, 28)
+                x_noisy = gaussian_filter(x.cpu().detach().numpy(), sigma=.5)
+                x_noisy = torch.Tensor(x_noisy)
+                x = x.to(self.device)
+                y_original = y
+                y_one_hot = Utils.idx2onehot(y.view(-1, 1), self.num_categories_in_task)
+                y = y.to(self.device)
+                y_one_hot = y_one_hot.to(self.device)
+
+                #generated_x, _, _ = self.VAE_most_recent.encode_then_decode_without_randomness(x,y_one_hot.float())
+                #__, generated_x = self.VAE_most_recent.get_sample_reconstruction_error_from_all_category(x)
+                #print(x_noisy.size())
+                x = self.dataset_interface.transformations['CNN']['test_to_image']( torch.squeeze(x_noisy))
+                #x = self.dataset_interface.transformations['CNN']['test_to_image'](torch.squeeze(generated_x.cpu()).detach().numpy())
+                x = torch.unsqueeze(x,0)
+                #print(generated_x.size())
+                #print(x.size())
+                x = x.to(self.device)
+
+
+                with torch.no_grad():
+                    outputs = self.CNN_most_recent(x)
+                    _, preds = torch.max(outputs, 1)
+                    # print(preds)
+                    # criterion = nn.CrossEntropyLoss()
+                    # loss = criterion(outputs.to(device), y)
+
+                    correct = torch.sum(preds == y.data)
+
+                by_category_record_of_recon_error_and_accuracy[y_original.item()][2] += correct.item()
+
+                if preds.item() == 9:
+                    classified_nines += 1
+
+
+                if(i<20):
+                    print("actual",y.data,"classified",preds)
+                    fig1 = plt.figure(figsize=(5, 5))
+                    ax = fig1.add_subplot(1, 3, 1)
+                    ax.axis('off')
+                   # generated_x, _, _ = self.VAE_most_recent.encode_then_decode_without_randomness(x,y)
+                    ax.imshow(x[0][0].cpu().numpy(), cmap='gray')
+
+                    plt.ioff()
+                    plt.show()
+
+
+
         self.CNN_most_recent.cpu()
+        self.VAE_most_recent.send_all_to_CPU()
+
 
         total_count = 0
         total_recon = 0
@@ -662,34 +739,52 @@ class TaskBranch:
         total_average_recon = total_recon / total_count
         total_accuracy = total_correct / total_count
         print("For all (", total_count, "): Ave. Recon:", total_average_recon, " Ave. Accuracy:", total_accuracy,"\n")
+        print(self.num_categories_in_task-1,"classifications",classified_nines)
 
+        if is_save:
+            epoch_record = EpochRecord.EpochRecord(test_name, self.task_name, str(self.num_VAE_epochs), str(self.num_CNN_epochs), total_count, self.num_categories_in_task, total_average_recon,total_accuracy, self.categories_list, recon_per_class, accuracy_per_class, random_image_per_class_list=None)
 
-
-        epoch_record = EpochRecord.EpochRecord(test_name, self.task_name, str(self.num_VAE_epochs), str(self.num_CNN_epochs), total_count, self.num_categories_in_task, total_average_recon,total_accuracy, self.categories_list, recon_per_class, accuracy_per_class, random_image_per_class_list=None)
-
-        self.record_keeper.record_iteration_accuracy(test_name, epoch_record)
+            self.record_keeper.record_iteration_accuracy(test_name, epoch_record)
 
     def generate_samples_to_display(self):
 
         self.VAE_most_recent.eval()
         self.VAE_most_recent.to(self.device)
-        z = self.fixed_noise[0]
+        z1 = self.fixed_noise[0]
+        z2 = self.fixed_noise[1]
+        z3 = self.fixed_noise[2]
 
-        fig1 = plt.figure(figsize=(20, 10))
         r = self.num_categories_in_task
         c = 1
         #c = round(self.num_categories_in_task/2)
 
         for cat in range(0,self.num_categories_in_task):
 
-            img = self.VAE_most_recent.generate_single_random_sample(cat ,z).cpu()
-            img = img.numpy()
-            ax = fig1.add_subplot(r, c, cat + 1)
+            fig1 = plt.figure(figsize=(5, 5))
+            #print(cat)
+            img1 = self.VAE_most_recent.generate_single_random_sample(cat ,z1).cpu().numpy()
+            img2 = self.dataset_interface.transformations['CNN']['test_to_image'](self.VAE_most_recent.generate_single_random_sample(cat ,z2).cpu())[0].cpu().numpy()
+            img3 = self.VAE_most_recent.generate_single_random_sample(cat ,z3).cpu().numpy()
+            #ax = fig1.add_subplot(r, c, cat + 1)
+            ax = fig1.add_subplot(1, 3, 1)
             ax.axis('off')
-            ax.set_title(cat)
-            ax.imshow(img, cmap='gray')
+            #ax.set_title(cat)
+            ax.imshow(img1, cmap='gray')
 
-        plt.ioff()
-        plt.show()
+            ax = fig1.add_subplot(1, 3, 2)
+            ax.axis('off')
+            #ax.set_title(cat)
+            ax.imshow(img2, cmap='gray')
+
+            ax = fig1.add_subplot(1, 3, 3)
+            ax.axis('off')
+            #ax.set_title(cat)
+            ax.imshow(img3, cmap='gray')
+
+            plt.ioff()
+            plt.show()
+
+#        plt.ioff()
+ #       plt.show()
 
         self.VAE_most_recent.cpu()

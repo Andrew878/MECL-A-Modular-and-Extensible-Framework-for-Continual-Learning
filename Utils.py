@@ -177,33 +177,50 @@ def test_gate_versus_non_gate(*task_branches, number_tests_per_data_set=1000):
     print("*********** Testing Gate versus non-gate_method")
     gate = Gate.Gate()
     dataset_list = []
+    confusion_matrix =  {}
 
     for task in task_branches:
         gate.add_task_branch(task)
         dataset_list.append(task.dataset_interface)
+        confusion_matrix[task.task_name] = {}
 
 
     GATE_overall_correct_task_classification = 0
     NO_GATE_overall_correct_task_classification = 0
+
+    per_task_GATE_overall_correct_task_classification = 0
+    per_task_NO_GATE_overall_correct_task_classification = 0
+
     overall_correct_task_allocations_std = 0
 
     overall_correct_task_and_class_allocations_recon = 0
     overall_correct_task_and_class_allocations_std = 0
 
     num_tests_overall = 0
+    per_task_num_tests = 0
+
 
     for data_set_interface in dataset_list:
-        print("Looking through test samples of ",data_set_interface.name)
+        per_task_GATE_overall_correct_task_classification = 0
+        per_task_NO_GATE_overall_correct_task_classification = 0
+        per_task_num_tests = 0
+
+        confusion_matrix[data_set_interface.name] = {task.task_name:0 for task in task_branches}
+
         dataloader = data_set_interface.return_data_loaders('VAE', BATCH_SIZE=1)
 
         for i, (x, y) in enumerate(dataloader['val']):
 
             num_tests_overall += 1
+            per_task_num_tests += 1
             best_task_recon, pred_cat, __ = gate.classify_input_using_allocation_method(x)
+
+            confusion_matrix[data_set_interface.name][best_task_recon.task_name] += 1
 
             if (best_task_recon.task_name == data_set_interface.name):
                 if (pred_cat == y.item()):
                     GATE_overall_correct_task_classification += 1
+                    per_task_GATE_overall_correct_task_classification +=1
 
             highest_prob = 0
             highest_prob_cat = 0
@@ -219,7 +236,15 @@ def test_gate_versus_non_gate(*task_branches, number_tests_per_data_set=1000):
             if (highest_prob_task.task_name == data_set_interface.name):
                 if (highest_prob_cat == y.item()):
                     NO_GATE_overall_correct_task_classification += 1
+                    per_task_NO_GATE_overall_correct_task_classification += 1
 
+        print(data_set_interface.name," by task samples: ",per_task_num_tests, " Gate accuracy: ",per_task_GATE_overall_correct_task_classification/per_task_num_tests, " Accuracy without gate: ",per_task_NO_GATE_overall_correct_task_classification/per_task_num_tests)
+    print("Overall Samples: ", num_tests_overall, " Gate accuracy: ",GATE_overall_correct_task_classification / num_tests_overall, " Accuracy without gate: ",NO_GATE_overall_correct_task_classification / num_tests_overall,"\n\n")
+
+    print("*** Printing confusion matrix ***")
+    print(confusion_matrix[dataset_list[0].name].keys())
+    for task in task_branches:
+        print(task.task_name, confusion_matrix[task.task_name].values())
 
 
 def test_pre_trained_versus_non_pre_trained(new_task_to_be_trained, template_task, model_id, num_epochs=30,
@@ -484,9 +509,7 @@ def test_synthetic_samples_versus_normal_increasing(original_task_datasetInterfa
 
             print("\n------------ Pseudo Samples ",category_list_subset)
 
-            combined_task_branch_synthetic = task.TaskBranch(task_DIS_orig_for_synth.name + " pseudo",
-                                                             task_DIS_orig_for_synth,
-                                                             device, PATH_MODELS, record_keeper)
+
 
             print("\nPseudo Samples - create samples")
             combined_task_branch_synthetic.create_blended_dataset_with_synthetic_samples(task_DIS_orig,[category_list_subset[-1]],extra_new_cat_multi)
@@ -524,6 +547,116 @@ def test_synthetic_samples_versus_normal_increasing(original_task_datasetInterfa
 
             del task_DIS_orig, combined_task_branch_no_synthetic
             torch.cuda.empty_cache()
+
+
+def test_synthetic_samples_versus_normal_increasing_PRETRAINED_VAE(original_task_datasetInterface, PATH_MODELS,record_keeper,
+                                         device='cuda',number_increments=10, extra_new_cat_multi=1):
+    print("***** Testing pseudo-rehearsal versus real samples")
+
+    new_class_index = 10
+    is_time_to_break = False
+
+    is_save = False
+    BATCH = 64
+    EPOCH_IMPROVE_LIMIT = 20
+    num_per_cat_gen_class_test = 1000
+    num_per_cat_gen_class_test = 1
+
+    EPOCH_CNN = 10
+    EPOCH_CNN = 1
+    BETA_CNN = (0.999, .999)
+    LEARNR_CNN = 0.00025
+
+    EPOCH_VAE = 1
+    EPOCH_VAE = 50
+    LAT_DIM_VAE = 50
+    BETA_VAE = (0.5, 0.999)
+    LEARNR_VAE = 0.00035
+
+    cat_list_all = original_task_datasetInterface.categories_list
+
+    combined_task_branch_synthetic = None
+
+    FOLDER = "real_versus_synth_models/"
+    model_string = []
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 101.1282752212213 increment0synth multi 1")
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 78.45619751514317 increment1synth multi 1")
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 89.60624052141372 increment2synth multi 1")
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 95.91765151826462 increment3synth multi 1")
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 98.84272441048243 increment4synth multi 1")
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 102.96877034505208 increment5synth multi 1")
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 104.12568975369538 increment6synth multi 1")
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 104.48726003921449 increment7synth multi 1")
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 108.8118243938762 increment8synth multi 1")
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 109.9276000371655 increment9synth multi 1")
+
+
+    for increment in range(0, number_increments):
+
+        task_DIS_orig = copy.deepcopy(original_task_datasetInterface)
+        category_list_subset = cat_list_all[0:increment+1]
+        task_DIS_orig.reduce_categories_in_dataset(category_list_subset)
+        task_DIS_orig_for_synth = copy.deepcopy(task_DIS_orig)
+
+
+        name = "increment" + str(increment) + "synth multi "+ str(extra_new_cat_multi)
+
+        if (increment == 0):
+            combined_task_branch_synthetic = task.TaskBranch(task_DIS_orig_for_synth.name + " pseudo", task_DIS_orig_for_synth,
+                                                             device, PATH_MODELS,record_keeper)
+
+            print("Starting point, just MNIST....")
+            print("Training VAE - Starting")
+
+            print("\n Beginning point only ",category_list_subset)
+
+
+            combined_task_branch_synthetic.load_existing_VAE(PATH_MODELS+FOLDER+"VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 101.1282752212213 increment0synth multi 1",False)
+            combined_task_branch_synthetic.load_existing_CNN(PATH_MODELS+FOLDER+"CNN MNIST pseudo epochs10,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 1.0 increment0synth multi 1")
+
+            given_test_set_compare_synthetic_and_normal_approaches([combined_task_branch_synthetic], task_DIS_orig,category_list_subset, extra_new_cat_multi)
+
+
+            record_keeper.record_to_file("real_versus fake continual learning adding "+str(category_list_subset[0])+" to "+str(category_list_subset[-1])+" synth multi "+str(extra_new_cat_multi))
+
+            del task_DIS_orig
+            torch.cuda.empty_cache()
+
+        else:
+
+
+            print("\n------------ Pseudo Samples ",category_list_subset)
+
+
+
+            print("\nPseudo Samples - create samples")
+            combined_task_branch_synthetic.create_blended_dataset_with_synthetic_samples(task_DIS_orig,[category_list_subset[-1]],extra_new_cat_multi)
+
+
+
+            print("\nPseudo Samples - Loading VAE")
+            combined_task_branch_synthetic.load_existing_VAE(PATH_MODELS + FOLDER + model_string[increment])
+            combined_task_branch_synthetic.num_categories_in_task = increment+1
+
+
+            print("\nPseudo Samples - CNN")
+            combined_task_branch_synthetic.create_and_train_CNN(model_id=name, num_epochs=EPOCH_CNN, batch_size=BATCH,
+                                                                is_frozen=False,
+                                                                is_off_shelf_model=True,
+                                                                epoch_improvement_limit=EPOCH_IMPROVE_LIMIT,
+                                                                learning_rate=LEARNR_CNN,
+                                                                betas=BETA_CNN, is_save=is_save)
+
+
+
+            given_test_set_compare_synthetic_and_normal_approaches([combined_task_branch_synthetic], task_DIS_orig,category_list_subset, extra_new_cat_multi)
+
+
+            record_keeper.record_to_file("real_versus fake continual learning adding "+str(category_list_subset)+" synth multi "+str(extra_new_cat_multi))
+
+            del task_DIS_orig
+            torch.cuda.empty_cache()
+
 
 def given_test_set_compare_synthetic_and_normal_approaches(task_branch_list, dataSetInter,new_cats_added,extra_new_cat_multi):
 
@@ -741,6 +874,12 @@ def test_concept_drift_for_single_task(task_branch, shear_degree_max,shear_degre
 
 
 def load_VAE_models_and_display_syn_images(PATH_MODELS, task_branch):
+
+    task_branch.VAE_most_recent = None
+    task_branch.CNN_most_recent = None
+
+
+    FOLDER = "real_versus_synth_models/"
     model_string = []
     model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 101.1282752212213 increment0synth multi 1")
     model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 78.45619751514317 increment1synth multi 1")
@@ -751,12 +890,37 @@ def load_VAE_models_and_display_syn_images(PATH_MODELS, task_branch):
     model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 104.12568975369538 increment6synth multi 1")
     model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 104.48726003921449 increment7synth multi 1")
     model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 108.8118243938762 increment8synth multi 1")
-    model_string.append("")
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 109.9276000371655 increment9synth multi 1")
 
+    print("Synthetic multiplier x1.0")
     i=1
     for string in model_string:
-        task_branch.combined_task_branch_synthetic.load_existing_VAE(PATH_MODELS+ string)
-        task_branch.num_categories_in_task = 1
-        task_branch.generate_samples_to_display()
+        task_branch.load_existing_VAE(PATH_MODELS+FOLDER+string)
+        task_branch.num_categories_in_task = i
+        #print("num cats ",i,"load",string)
+        #task_branch.generate_samples_to_display()
         i += 1
 
+    task_branch.load_existing_CNN(PATH_MODELS+FOLDER+"CNN MNIST pseudo epochs10,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 1.0 increment9synth multi 1")
+    task_branch.run_end_of_training_benchmarks("double check", is_save=False)
+
+    model_string = []
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 101.1282752212213 increment0synth multi 1")
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 81.97313514563623 increment1synth multi 1.25")
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 86.8226265794332 increment2synth multi 1.25")
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 94.33633891675669 increment3synth multi 1.25")
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 98.11629391048503 increment4synth multi 1.25")
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 101.63875584279498 increment5synth multi 1.25")
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 104.91211280493653 increment6synth multi 1.25")
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 105.55814459472128 increment7synth multi 1.25")
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 108.8795609685252 increment8synth multi 1.25")
+    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 110.63353334016243 increment9synth multi 1.25")
+
+    print("Synthetic multiplier x0.8")
+    i=1
+    for string in model_string:
+        task_branch.load_existing_VAE(PATH_MODELS+FOLDER+string)
+        task_branch.num_categories_in_task = i
+        #print("num cats ",i,"load",string)
+        #task_branch.generate_samples_to_display()
+        i += 1

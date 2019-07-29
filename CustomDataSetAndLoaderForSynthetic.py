@@ -3,6 +3,8 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets, transforms
 import numpy as np
 from PIL import Image
+import Utils
+from scipy.ndimage import gaussian_filter
 
 class SyntheticDS(Dataset):
     """
@@ -15,6 +17,7 @@ class SyntheticDS(Dataset):
         self.synthetic_data_list_unique_label = synthetic_data_list_unique_label
         self.real_data_to_blend = real_data_to_blend
         self.number_synthetic_categories = number_synthetic_categories
+        #self.task_branch = task_branch
 
         self.index_key_fake = [(i,'fake') for i in range(0,len(self.synthetic_data_list_unique_label))]
         self.index_key_real = [(i,'real') for i in range(0,self.real_data_to_blend.__len__())]
@@ -74,17 +77,25 @@ class SyntheticDS(Dataset):
             # for CNN we want to maintain the three channels, i.e. so desired inputs are [3,224,224] (224 because of resizing transform)
             #print(image.size(1), image.size())
 
+
             if not self.is_make_dim_adjustment_for_resnet:
                 image = image[0].float()
                 category = [category]
                 category = torch.tensor(np.array([category, ])).to(dtype=torch.long)#, device='cuda')
-
+            else:
+                x_noisy = gaussian_filter(image.cpu().detach().numpy(), sigma=.5)
+                #print("here")
+                x_noisy = torch.Tensor(x_noisy).cpu()
+                image = self.transforms['CNN']['test_to_image'](torch.squeeze(x_noisy).detach().numpy())
+                #image = torch.unsqueeze(x, 0)
+                # category = [category]
+                # category = torch.tensor(np.array([category, ])).to(dtype=torch.long)
 
 
 
         if self.freq%1000000==0:
             print(self.freq, self.freq_check)
-        #print(real_or_fake, image.size(), category)#, image.type(), category,category.size(),  category.type(), category)
+        #print(real_or_fake, image.size(), category, image.type(), category)#,category.size(),  category.type(), category)
 
         return image.float(), category
 

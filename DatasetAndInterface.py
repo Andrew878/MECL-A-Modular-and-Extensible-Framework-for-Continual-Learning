@@ -42,7 +42,7 @@ class DataSetAndInterface:
         #         self.dataset_targets[split][model] = torch.IntTensor(list_of_cats)
         #         print(name,split,model, self.dataset_targets[split][model])
 
-        self.show_plots_of_dataset()
+        #self.show_plots_of_dataset()
 
         self.label_to_index_dict = {k: v for v, k in enumerate(self.categories_list)}
         self.num_categories = len(self.categories_list)
