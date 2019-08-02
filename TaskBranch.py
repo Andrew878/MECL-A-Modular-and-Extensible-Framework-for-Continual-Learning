@@ -13,6 +13,7 @@ import CustomDataSetAndLoaderForSynthetic
 import matplotlib.pyplot as plt
 import EpochRecord
 import queue
+
 import RecordKeeper
 from scipy.ndimage import gaussian_filter
 
@@ -41,13 +42,13 @@ class TaskBranch:
         self.CNN_optimizer = None
 
         self.overall_average_reconstruction_error = None
-        self.queue_length = 10000
-        self.history_queue_of_task_relatedness = queue.Queue(maxsize=self.queue_length)
+        self.queue_length = 9999
+        self.history_queue_of_task_relatedness = []
         self.is_need_to_recalibrate_queue = False
         self.queue_sum = 0
         self.task_relatedness_threshold = 0.9
 
-
+        self.sample_limit = float('Inf')
 
         self.dataset_splits = self.dataset_interface.dataset_splits
         self.by_category_record_of_reconstruction_error = None
@@ -73,7 +74,7 @@ class TaskBranch:
     def create_and_train_VAE(self, model_id, num_epochs=30, batch_size=64, hidden_dim=10, latent_dim=50,
                              is_synthetic=False, is_take_existing_VAE=False, teacher_VAE=None,
                              is_new_categories_to_addded_to_existing_task= False, is_completely_new_task=False,
-                             epoch_improvement_limit=30, learning_rate=0.00035, betas=(0.5, .999),weight_decay = 0.0001, is_save=False, ):
+                             epoch_improvement_limit=30, learning_rate=0.00035, betas=(0.5, .999),weight_decay = 0.0001,sample_limit= float('Inf'), is_save=False, ):
 
         self.num_VAE_epochs = num_epochs
 
@@ -115,11 +116,16 @@ class TaskBranch:
 
             # fix epochs
             train_loss = self.run_a_VAE_epoch_calculate_loss(dataloaders['train'], is_train=True,
-                                                             is_synthetic=is_synthetic)
+                                                             is_synthetic=is_synthetic, sample_limit=sample_limit)
             val_loss = self.run_a_VAE_epoch_calculate_loss(dataloaders['val'], is_train=False,
                                                            is_synthetic=is_synthetic)
 
-            train_loss /= self.dataset_interface.training_set_size
+            if sample_limit < float('inf'):
+                train_size = sample_limit
+            else:
+                train_size =self.dataset_interface.training_set_size
+
+            train_loss /= train_size
             val_loss /= self.dataset_interface.val_set_size
             time_elapsed = time.time() - start_timer
 
@@ -156,9 +162,7 @@ class TaskBranch:
         self.VAE_most_recent.cpu()
 
         # reset related task queue variables
-        self.history_queue_of_task_relatedness = queue.Queue(maxsize=self.queue_length)
-        self.is_need_to_recalibrate_queue = False
-        self.queue_sum = 0
+        self.reset_queue_variables()
 
         if is_save:
             torch.save(self.VAE_most_recent, self.VAE_most_recent_path)
@@ -170,9 +174,15 @@ class TaskBranch:
         self.VAE_most_recent.send_all_to_CPU()
         torch.cuda.empty_cache()
 
+    def reset_queue_variables(self):
+        self.history_queue_of_task_relatedness = []
+        self.is_need_to_recalibrate_queue = False
+        self.queue_sum = 0
+
     def run_a_VAE_epoch_calculate_loss(self, data_loader, is_train, teacher_VAE=None, is_synthetic=False,
                                        is_cat_info_required=False, sample_limit = float('Inf')):
 
+        #self.VAE_most_recent.send_all_to_GPU()
         if is_train:
             self.VAE_most_recent.train()
         else:
@@ -184,6 +194,11 @@ class TaskBranch:
 
         loss_sum = 0
         for i, (x, y) in enumerate(data_loader):
+
+            # To restrict training size
+            if sample_limit < (i*data_loader.batch_size):
+                print("break at ", i*data_loader.batch_size)
+                break
             # reshape the data into [batch_size, 784]
             #print(x.size())
             #x = x.view(batch_size, 1, 28, 28)
@@ -202,7 +217,8 @@ class TaskBranch:
 
 
             # update the gradients to zero
-            self.VAE_optimizer.zero_grad()
+            if is_train:
+                self.VAE_optimizer.zero_grad()
 
             # forward pass
             # track history if only in train
@@ -227,10 +243,9 @@ class TaskBranch:
             del x,y,loss,reconstructed_x, z_mu, z_var
             torch.cuda.empty_cache()
 
-            # To restrict training size
-            if sample_limit < (i*data_loader.batch_size):
-                break
 
+
+        #self.VAE_most_recent.send_all_to_CPU()
         return loss_sum
 
     # def generate_synthetic_batch(self, batch_size = 64):
@@ -242,12 +257,12 @@ class TaskBranch:
         if is_calculate_mean_std:
             print(self.task_name, " - Loaded VAE model, now calculating reconstruction error mean, std")
             self.obtain_VAE_recon_error_mean_and_std_per_class(PATH)
-        #else:
-            # self.by_category_mean_std_of_reconstruction_error = mpu.io.read(PATH + "mean,std.pickle")
-            # self.overall_average_reconstruction_error = mpu.io.read(PATH + "overallmean.pickle")
+        else:
+            self.by_category_mean_std_of_reconstruction_error = mpu.io.read(PATH + "mean,std.pickle")
+            self.overall_average_reconstruction_error = mpu.io.read(PATH + "overallmean.pickle")
 
     def create_and_train_CNN(self, model_id, num_epochs=30, batch_size=64, is_frozen=False, is_off_shelf_model=False,
-                             epoch_improvement_limit=20, learning_rate=0.0003, betas=(0.999, .999), weight_decay = 0.0001, is_save=False, is_synthetic_blend = False):
+                             epoch_improvement_limit=20, learning_rate=0.0003, betas=(0.999, .999), weight_decay = 0.0001, is_save=False,sample_limit = float('Inf'), is_synthetic_blend = False):
 
 
         self.num_CNN_epochs = num_epochs
@@ -293,7 +308,7 @@ class TaskBranch:
 
         for epoch in range(num_epochs):
 
-            train_loss, correct_guesses_train = self.run_a_CNN_epoch_calculate_loss(dataloaders['train'], criterion,
+            train_loss, correct_guesses_train = self.run_a_CNN_epoch_calculate_loss(dataloaders['train'], criterion,sample_limit = sample_limit,
                                                                                     is_train=True)
             val_loss, correct_guesses_val = self.run_a_CNN_epoch_calculate_loss(dataloaders['val'], criterion,
                                                                                 is_train=False)
@@ -349,7 +364,9 @@ class TaskBranch:
                                                                  BATCH_SIZE=1)
 
         # get a record of loss reconstruction on training set, but don't do any training
+        self.VAE_most_recent.send_all_to_GPU()
         train_loss = self.run_a_VAE_epoch_calculate_loss(data_loader['train'], is_train=False, is_cat_info_required=True)
+        self.VAE_most_recent.send_all_to_CPU()
         self.overall_average_reconstruction_error = train_loss/self.dataset_interface.training_set_size
 
         # initialize dictionary
@@ -369,20 +386,26 @@ class TaskBranch:
 
     def given_observation_find_lowest_reconstruction_error(self, x, is_standardised_distance_check=True):
 
-        lowest_recon_error, __ = self.VAE_most_recent.get_sample_reconstruction_error_from_all_category(x,
+        lowest_recon_error, recon_x = self.VAE_most_recent.get_sample_reconstruction_error_from_all_category(x,
                                                                                       self.by_category_mean_std_of_reconstruction_error,
                                                                                       is_random=False,
                                                                                       only_return_best=True,
                                                                                       is_standardised_distance_check=is_standardised_distance_check)
-        if self.history_queue_of_task_relatedness.full():
-            old_val = self.history_queue_of_task_relatedness.get()
-            self.queue_sum += lowest_recon_error - old_val
-            self.history_queue_of_task_relatedness.put(lowest_recon_error)
-            average_task_relatedness = self.queue_sum/self.queue_length
+        if len(self.history_queue_of_task_relatedness) >= self.queue_length:
+            old_val = self.history_queue_of_task_relatedness.pop(0)
+            self.queue_sum += lowest_recon_error[0][1] - old_val
+            self.history_queue_of_task_relatedness.append(lowest_recon_error[0][1])
+            average_recon = self.queue_sum/self.queue_length
+          #  print(self.queue_sum , average_recon)
+            average_task_relatedness = self.given_average_recon_error_calc_task_relatedness(average_recon)
+          #  print("average_task_relatedness",average_task_relatedness)
             if average_task_relatedness < self.task_relatedness_threshold:
+              #  print("reached 2")
                 self.is_need_to_recalibrate_queue = True
         else:
-            self.history_queue_of_task_relatedness.put(lowest_recon_error)
+            #print("reached 3")
+            self.history_queue_of_task_relatedness.append(lowest_recon_error[0][1])
+            self.queue_sum += lowest_recon_error[0][1]
 
 
         return lowest_recon_error
@@ -396,6 +419,13 @@ class TaskBranch:
 
             x = x.float()
 
+            # if shear_degree != -1:
+            #     #print(x.size())
+            #     x = torch.squeeze(x)
+            #     #print(x.size())
+            #     shear_trans = transforms.Compose([transforms.ToPILImage(),lambda img: transforms.functional.affine(img, angle=0,translate=(0,0), scale=1, shear=shear_degree),transforms.ToTensor()])
+            #     x = shear_trans(x).float()
+
             reconstruction_error_sum += self.given_observation_find_lowest_reconstruction_error(x,False)[0][1]
 
             if i > num_samples_to_check:
@@ -405,11 +435,14 @@ class TaskBranch:
 
         reconstruction_error_average = reconstruction_error_sum/sample_count
 
-        task_relatedness = 1 - abs(self.overall_average_reconstruction_error - reconstruction_error_average)/(self.overall_average_reconstruction_error + reconstruction_error_average)
+        task_relatedness = self.given_average_recon_error_calc_task_relatedness(reconstruction_error_average)
 
         return reconstruction_error_average, task_relatedness
 
-
+    def given_average_recon_error_calc_task_relatedness(self, reconstruction_error_average):
+        task_relatedness = 1 - abs(self.overall_average_reconstruction_error - reconstruction_error_average) / (
+                    self.overall_average_reconstruction_error + reconstruction_error_average)
+        return task_relatedness
 
     def generate_single_random_sample(self, category, is_random_cat=False):
         return self.VAE_most_recent.generate_single_random_sample(category, is_random_cat)
@@ -430,6 +463,8 @@ class TaskBranch:
         running_corrects = 0
         for i, (x, y) in enumerate(data_loader):
 
+            if sample_limit < (i * data_loader.batch_size):
+                break
             #if(samples_limited_percentage*data_loader.batch)
 
             # reshape the data into [batch_size, 784]
@@ -478,8 +513,7 @@ class TaskBranch:
             torch.cuda.empty_cache()
 
             # To restrict training size
-            if sample_limit < (i * data_loader.batch_size):
-                break
+
 
         return loss_sum, running_corrects.double()
 
@@ -493,6 +527,8 @@ class TaskBranch:
         output = self.CNN_most_recent(x)
         preds = output
 
+        #print(output)
+
         if not is_output_one_hot:
             max_value, preds = torch.max(output, 1)
 
@@ -500,6 +536,8 @@ class TaskBranch:
         return preds, max_value
 
     def create_blended_dataset_with_synthetic_samples(self, new_real_datasetInterface,new_categories_to_add_to_existing_task,extra_new_cat_multi=1, is_single_task_recal_process= False):
+
+        is_plot = False
 
         if len(new_categories_to_add_to_existing_task) ==0:
             new_categories_to_add_to_existing_task = new_real_datasetInterface.categories_list
@@ -511,7 +549,7 @@ class TaskBranch:
         self.synthetic_samples_for_reuse = {i: [] for i in self.dataset_splits}
 
         original_cat_index_to_new_cat_index_dict = {new_real_datasetInterface.label_to_index_dict[new_cat_label]:self.categories_list.index(new_cat_label) for new_cat_label in new_categories_to_add_to_existing_task}
-        print(original_cat_index_to_new_cat_index_dict )
+        #print(original_cat_index_to_new_cat_index_dict )
 
         blended_dataset = {split: {} for split in self.dataset_splits}
 
@@ -526,7 +564,7 @@ class TaskBranch:
                 subset_dataset_real = new_real_datasetInterface.obtain_dataset_with_subset_of_categories('VAE',split,new_categories_to_add_to_existing_task)
 
                 real_db = subset_dataset_real
-                print(len(real_db))
+               # print(len(real_db))
 
                 size_per_class = 4
                 size_per_class = round(len(subset_dataset_real) / (len(new_categories_to_add_to_existing_task)*(1/extra_new_cat_multi)))
@@ -547,23 +585,24 @@ class TaskBranch:
         self.dataset_interface.update_data_set(blended_dataset)
         self.refresh_variables_for_mutated_task()
 
-        fig1 = plt.figure(figsize=(10, 10))
-        x = 0
-        r = 20
-        c = 3
+        if is_plot:
+            fig1 = plt.figure(figsize=(10, 10))
+            x = 0
+            r = 20
+            c = 3
 
-        for i in range(x,r*c):
-            img, cat = self.dataset_interface.dataset['val']['VAE'][i]
+            for i in range(x,r*c):
+                img, cat = self.dataset_interface.dataset['val']['VAE'][i]
 
-            img = img.view(28, 28).data
-            img = img.numpy()
-            ax = fig1.add_subplot(r, c, i-x + 1)
-            ax.axis('off')
-            ax.set_title(cat.item())
-            ax.imshow(img, cmap='gray_r')
+                img = img.view(28, 28).data
+                img = img.numpy()
+                ax = fig1.add_subplot(r, c, i-x + 1)
+                ax.axis('off')
+                ax.set_title(cat.item())
+                ax.imshow(img, cmap='gray_r')
 
-        plt.ioff()
-        plt.show()
+            plt.ioff()
+            plt.show()
 
         # fig2 = plt.figure(figsize=(10, 10))
         # x = 30
@@ -585,13 +624,14 @@ class TaskBranch:
 
     def run_end_of_training_benchmarks(self, test_name, dataset_interface = None, is_save = True, is_gaussian_noise_required = False):
 
+        is_plot_results = False
 
         if dataset_interface == None:
             dataset_interface = self.dataset_interface
 
         print("\n *************\nFor task ", self.task_name)
-        print(self.VAE_most_recent_path)
-        print(self.CNN_most_recent_path)
+        # print(self.VAE_most_recent_path)
+        # print(self.CNN_most_recent_path)
 
         data_loader_CNN = dataset_interface.return_data_loaders('CNN', BATCH_SIZE=1)
         data_loader_VAE = dataset_interface.return_data_loaders('VAE', BATCH_SIZE=1)
@@ -647,17 +687,17 @@ class TaskBranch:
                 if preds.item() == self.num_categories_in_task-1:
                     classified_nines += 1
 
+                if is_plot_results:
+                    if(i<10):
+                        print("actual",y.data,"classified",preds)
+                        fig1 = plt.figure(figsize=(5, 5))
+                        ax = fig1.add_subplot(1, 3, 1)
+                        ax.axis('off')
+        #                generated_x, _, _ = self.VAE_most_recent.encode_then_decode_without_randomness(x,y)
+                        ax.imshow(x[0][0].cpu().numpy(), cmap='gray')
 
-                if(i<10):
-                    print("actual",y.data,"classified",preds)
-                    fig1 = plt.figure(figsize=(5, 5))
-                    ax = fig1.add_subplot(1, 3, 1)
-                    ax.axis('off')
-    #                generated_x, _, _ = self.VAE_most_recent.encode_then_decode_without_randomness(x,y)
-                    ax.imshow(x[0][0].cpu().numpy(), cmap='gray')
-
-                    plt.ioff()
-                    plt.show()
+                        plt.ioff()
+                        plt.show()
 
         else:
             for i, (x, y) in enumerate(data_loader_VAE2['val']):
@@ -665,6 +705,7 @@ class TaskBranch:
                 # print(x.size())
                 # x = x.view(batch_size, 1, 28, 28)
                 x_noisy = gaussian_filter(x.cpu().detach().numpy(), sigma=.5)
+                #x_noisy = gaussian_filter(x.cpu().detach().numpy(), sigma=1)
                 x_noisy = torch.Tensor(x_noisy)
                 x = x.to(self.device)
                 y_original = y
@@ -697,19 +738,17 @@ class TaskBranch:
                 if preds.item() == 9:
                     classified_nines += 1
 
+                if is_plot_results:
+                    if(i<20):
+                        print("actual",y.data,"classified",preds)
+                        fig1 = plt.figure(figsize=(5, 5))
+                        ax = fig1.add_subplot(1, 3, 1)
+                        ax.axis('off')
+                       # generated_x, _, _ = self.VAE_most_recent.encode_then_decode_without_randomness(x,y)
+                        ax.imshow(x[0][0].cpu().numpy(), cmap='gray')
 
-                if(i<20):
-                    print("actual",y.data,"classified",preds)
-                    fig1 = plt.figure(figsize=(5, 5))
-                    ax = fig1.add_subplot(1, 3, 1)
-                    ax.axis('off')
-                   # generated_x, _, _ = self.VAE_most_recent.encode_then_decode_without_randomness(x,y)
-                    ax.imshow(x[0][0].cpu().numpy(), cmap='gray')
-
-                    plt.ioff()
-                    plt.show()
-
-
+                        plt.ioff()
+                        plt.show()
 
         self.CNN_most_recent.cpu()
         self.VAE_most_recent.send_all_to_CPU()
@@ -763,7 +802,8 @@ class TaskBranch:
             fig1 = plt.figure(figsize=(5, 5))
             #print(cat)
             img1 = self.VAE_most_recent.generate_single_random_sample(cat ,z1).cpu().numpy()
-            img2 = self.dataset_interface.transformations['CNN']['test_to_image'](self.VAE_most_recent.generate_single_random_sample(cat ,z2).cpu())[0].cpu().numpy()
+            img2 = self.VAE_most_recent.generate_single_random_sample(cat ,z2).cpu().numpy()
+            #img2 = self.dataset_interface.transformations['CNN']['test_to_image'](self.VAE_most_recent.generate_single_random_sample(cat ,z2).cpu())[0].cpu().numpy()
             img3 = self.VAE_most_recent.generate_single_random_sample(cat ,z3).cpu().numpy()
             #ax = fig1.add_subplot(r, c, cat + 1)
             ax = fig1.add_subplot(1, 3, 1)

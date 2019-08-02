@@ -208,11 +208,15 @@ def test_gate_versus_non_gate(*task_branches, number_tests_per_data_set=1000):
         confusion_matrix[data_set_interface.name] = {task.task_name:0 for task in task_branches}
 
         dataloader = data_set_interface.return_data_loaders('VAE', BATCH_SIZE=1)
+        #print(data_set_interface.name)
 
         for i, (x, y) in enumerate(dataloader['val']):
 
             num_tests_overall += 1
             per_task_num_tests += 1
+            #print(x.size())
+            #print(torch.squeeze(x).size())
+            #x = data_set_interface.transformations['CNN']['test_to_image'](torch.squeeze(x))
             best_task_recon, pred_cat, __ = gate.classify_input_using_allocation_method(x)
 
             confusion_matrix[data_set_interface.name][best_task_recon.task_name] += 1
@@ -222,34 +226,48 @@ def test_gate_versus_non_gate(*task_branches, number_tests_per_data_set=1000):
                     GATE_overall_correct_task_classification += 1
                     per_task_GATE_overall_correct_task_classification +=1
 
-            highest_prob = 0
+            highest_prob = float('-inf')
             highest_prob_cat = 0
-            highest_prob_task = 0
+            highest_prob_task = None
+            x_original = x
+            #print(task_branches)
             for task in task_branches:
-                x = data_set_interface.transformations['CNN']['test_to_image'](x)
+                #print(x.size())
+                #print(task.task_name)
+                x = task.dataset_interface.transformations['CNN']['test_to_image'](torch.squeeze(copy.deepcopy(x_original)))
+                #print(x.size())
+                x = torch.unsqueeze(x, 0)
+                #print(x.size())
                 pred_cat, probability = task.classify_with_CNN(x)
+                #print(pred_cat, probability)
                 if probability>highest_prob:
                     highest_prob = probability
-                    highest_prob_cat = pred_cat
+                    highest_prob_cat = pred_cat.item()
                     highest_prob_task = task
 
+            #print(highest_prob_task)
             if (highest_prob_task.task_name == data_set_interface.name):
                 if (highest_prob_cat == y.item()):
                     NO_GATE_overall_correct_task_classification += 1
                     per_task_NO_GATE_overall_correct_task_classification += 1
 
-        print(data_set_interface.name," by task samples: ",per_task_num_tests, " Gate accuracy: ",per_task_GATE_overall_correct_task_classification/per_task_num_tests, " Accuracy without gate: ",per_task_NO_GATE_overall_correct_task_classification/per_task_num_tests)
+
+        print(data_set_interface.name," by task samples: ",per_task_num_tests, " Accuracy with Gate: ",per_task_GATE_overall_correct_task_classification/per_task_num_tests, " Accuracy without gate: ",per_task_NO_GATE_overall_correct_task_classification/per_task_num_tests)
     print("Overall Samples: ", num_tests_overall, " Gate accuracy: ",GATE_overall_correct_task_classification / num_tests_overall, " Accuracy without gate: ",NO_GATE_overall_correct_task_classification / num_tests_overall,"\n\n")
 
     print("*** Printing confusion matrix ***")
-    print(confusion_matrix[dataset_list[0].name].keys())
+    print("For dataset", confusion_matrix[dataset_list[0].name].keys())
     for task in task_branches:
-        print(task.task_name, confusion_matrix[task.task_name].values())
+        print("Best task is",task.task_name, confusion_matrix[task.task_name].values())
 
 
 def test_pre_trained_versus_non_pre_trained(new_task_to_be_trained, template_task, model_id, num_epochs=30,
-                                            batch_size=64, hidden_dim=10, latent_dim=75, epoch_improvement_limit=20,
-                                            learning_rate=0.00035, betas=(0.5, .999), is_save=False, ):
+                                            batch_size=64, hidden_dim=10, latent_dim=50, epoch_improvement_limit=20,
+                                            learning_rate=0.00035, betas=(0.5, .999), sample_limit = float('Inf'), is_save=False):
+
+    new_task_to_be_trained = copy.deepcopy(new_task_to_be_trained)
+    template_task = copy.deepcopy(template_task)
+
     print("--- Task to be trained: ", new_task_to_be_trained.task_name)
     print("*********** Training from scratch ")
 
@@ -259,7 +277,7 @@ def test_pre_trained_versus_non_pre_trained(new_task_to_be_trained, template_tas
                                                 latent_dim=latent_dim, is_take_existing_VAE=True,
                                                 teacher_VAE=template_task.VAE_most_recent, is_completely_new_task=True,
                                                 epoch_improvement_limit=epoch_improvement_limit,
-                                                learning_rate=learning_rate, betas=betas, is_save=is_save)
+                                                learning_rate=learning_rate, betas=betas, sample_limit = sample_limit,is_save=is_save)
 
     print("*********** Training with pretrained weights from: ", template_task.task_name)
 
@@ -268,7 +286,7 @@ def test_pre_trained_versus_non_pre_trained(new_task_to_be_trained, template_tas
                                                 latent_dim=latent_dim, is_take_existing_VAE=False,
                                                 teacher_VAE=None, is_completely_new_task=True,
                                                 epoch_improvement_limit=epoch_improvement_limit,
-                                                learning_rate=learning_rate, betas=betas, is_save=is_save)
+                                                learning_rate=learning_rate, betas=betas,sample_limit = sample_limit, is_save=is_save)
 
 
 def test_synthetic_samples_versus_normal(original_task_datasetInterface, added_task_datasetInterface, PATH_MODELS,record_keeper,
@@ -446,31 +464,31 @@ def test_synthetic_samples_versus_normal_increasing(original_task_datasetInterfa
             combined_task_branch_synthetic = task.TaskBranch(task_DIS_orig_for_synth.name + " pseudo", task_DIS_orig_for_synth,
                                                              device, PATH_MODELS,record_keeper)
 
-            print("Starting point, just MNIST....")
+            print("Starting point, just ....")
             print("Training VAE - Starting")
 
             print("\n Beginning point only ",category_list_subset)
 
-            # combined_task_branch_synthetic.create_and_train_VAE(model_id=name, num_epochs=EPOCH_VAE, batch_size=BATCH,
-            #                                                     hidden_dim=10,
-            #                                                     latent_dim=LAT_DIM_VAE,
-            #                                                     is_synthetic=False, is_take_existing_VAE=False,
-            #                                                     teacher_VAE=None,
-            #                                                     is_new_categories_to_addded_to_existing_task=False,
-            #                                                     is_completely_new_task=True,
-            #                                                     epoch_improvement_limit=EPOCH_IMPROVE_LIMIT,
-            #                                                     learning_rate=LEARNR_VAE, betas=BETA_VAE,
-            #                                                     is_save=True)
-            #
-            # combined_task_branch_synthetic.create_and_train_CNN(model_id=name, num_epochs=EPOCH_CNN, batch_size=BATCH,
-            #                                                     is_frozen=False,
-            #                                                     is_off_shelf_model=True,
-            #                                                     epoch_improvement_limit=EPOCH_IMPROVE_LIMIT,
-            #                                                     learning_rate=LEARNR_CNN,
-            #                                                     betas=BETA_CNN, is_save=is_save)
+            combined_task_branch_synthetic.create_and_train_VAE(model_id=name, num_epochs=EPOCH_VAE, batch_size=BATCH,
+                                                                hidden_dim=10,
+                                                                latent_dim=LAT_DIM_VAE,
+                                                                is_synthetic=False, is_take_existing_VAE=False,
+                                                                teacher_VAE=None,
+                                                                is_new_categories_to_addded_to_existing_task=False,
+                                                                is_completely_new_task=True,
+                                                                epoch_improvement_limit=EPOCH_IMPROVE_LIMIT,
+                                                                learning_rate=LEARNR_VAE, betas=BETA_VAE,
+                                                                is_save=True)
 
-            combined_task_branch_synthetic.load_existing_VAE(PATH_MODELS+"VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 101.1282752212213 increment0synth multi 1",False)
-            combined_task_branch_synthetic.load_existing_CNN(PATH_MODELS+"CNN MNIST pseudo epochs10,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 1.0 increment0synth multi 1")
+            combined_task_branch_synthetic.create_and_train_CNN(model_id=name, num_epochs=EPOCH_CNN, batch_size=BATCH,
+                                                                is_frozen=False,
+                                                                is_off_shelf_model=True,
+                                                                epoch_improvement_limit=EPOCH_IMPROVE_LIMIT,
+                                                                learning_rate=LEARNR_CNN,
+                                                                betas=BETA_CNN, is_save=is_save)
+
+            #combined_task_branch_synthetic.load_existing_VAE(PATH_MODELS+"VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 101.1282752212213 increment0synth multi 1",False)
+            #combined_task_branch_synthetic.load_existing_CNN(PATH_MODELS+"CNN MNIST pseudo epochs10,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 1.0 increment0synth multi 1")
 
             given_test_set_compare_synthetic_and_normal_approaches([combined_task_branch_synthetic], task_DIS_orig,category_list_subset, extra_new_cat_multi)
 
@@ -562,8 +580,8 @@ def test_synthetic_samples_versus_normal_increasing_PRETRAINED_VAE(original_task
     num_per_cat_gen_class_test = 1000
     num_per_cat_gen_class_test = 1
 
-    EPOCH_CNN = 10
     EPOCH_CNN = 1
+    EPOCH_CNN = 10
     BETA_CNN = (0.999, .999)
     LEARNR_CNN = 0.00025
 
@@ -599,7 +617,7 @@ def test_synthetic_samples_versus_normal_increasing_PRETRAINED_VAE(original_task
         task_DIS_orig_for_synth = copy.deepcopy(task_DIS_orig)
 
 
-        name = "increment" + str(increment) + "synth multi "+ str(extra_new_cat_multi)
+        name = "only blur post: increment" + str(increment) + "synth multi "+ str(extra_new_cat_multi)
 
         if (increment == 0):
             combined_task_branch_synthetic = task.TaskBranch(task_DIS_orig_for_synth.name + " pseudo", task_DIS_orig_for_synth,
@@ -617,7 +635,7 @@ def test_synthetic_samples_versus_normal_increasing_PRETRAINED_VAE(original_task
             given_test_set_compare_synthetic_and_normal_approaches([combined_task_branch_synthetic], task_DIS_orig,category_list_subset, extra_new_cat_multi)
 
 
-            record_keeper.record_to_file("real_versus fake continual learning adding "+str(category_list_subset[0])+" to "+str(category_list_subset[-1])+" synth multi "+str(extra_new_cat_multi))
+            record_keeper.record_to_file("only blur post:real_versus fake continual learning adding "+str(category_list_subset[0])+" to "+str(category_list_subset[-1])+" synth multi "+str(extra_new_cat_multi))
 
             del task_DIS_orig
             torch.cuda.empty_cache()
@@ -652,7 +670,7 @@ def test_synthetic_samples_versus_normal_increasing_PRETRAINED_VAE(original_task
             given_test_set_compare_synthetic_and_normal_approaches([combined_task_branch_synthetic], task_DIS_orig,category_list_subset, extra_new_cat_multi)
 
 
-            record_keeper.record_to_file("real_versus fake continual learning adding "+str(category_list_subset)+" synth multi "+str(extra_new_cat_multi))
+            record_keeper.record_to_file("only blur post:real_versus fake continual learning adding "+str(category_list_subset)+" synth multi "+str(extra_new_cat_multi))
 
             del task_DIS_orig
             torch.cuda.empty_cache()
@@ -665,7 +683,10 @@ def given_test_set_compare_synthetic_and_normal_approaches(task_branch_list, dat
 
     for task_branch in task_branch_list:
 
-        task_branch.run_end_of_training_benchmarks("real_versus fake continual learning adding "+str(new_cats_added)+" synth multi "+str(extra_new_cat_multi),dataSetInter)
+        print("\n_____________No blurring")
+        task_branch.run_end_of_training_benchmarks("real_versus fake continual learning adding "+str(new_cats_added)+" synth multi "+str(extra_new_cat_multi),dataSetInter,is_gaussian_noise_required=False)
+        print("\n_____________Blurring")
+        task_branch.run_end_of_training_benchmarks("real_versus fake continual learning adding "+str(new_cats_added)+" synth multi "+str(extra_new_cat_multi),dataSetInter,is_gaussian_noise_required=True)
 
 
 
@@ -806,40 +827,50 @@ def test_concept_drift_for_single_task(task_branch, shear_degree_max,shear_degre
         print("*** Testing how task relativity changes with concept drift: ", task_branch.task_name)
 
         shear_degree_increment_num  = round(shear_degree_max/shear_degree_increments)
-        original_transforms = task_branch.dataset_interface.transforms
+        original_transforms = task_branch.dataset_interface.transformations
 
         task_branch_no_recalibration_changes = copy.deepcopy(task_branch)
+        task_branch = copy.deepcopy(task_branch)
         task_branch_no_recalibration_changes.name = "No recalibration changes"
 
         is_save = True
         BATCH = 64
         EPOCH_IMPROVE_LIMIT = 20
 
-        EPOCH_CNN = 3
         EPOCH_CNN = 1
+        EPOCH_CNN = 3
         BETA_CNN = (0.999, .999)
         LEARNR_CNN = 0.00025
 
-        EPOCH_VAE = 10
         EPOCH_VAE = 1
+        EPOCH_VAE = 10
         LAT_DIM_VAE = 50
         BETA_VAE = (0.5, 0.999)
         LEARNR_VAE = 0.00035
+
+        recal_count = 0
 
         for increment in range(0,shear_degree_increment_num+1):
 
             shear_degree = increment*shear_degree_increments
 
-            shear_trans = transforms.Compose([transforms.ToPILImage(),lambda img: transforms.functional.affine(img, angle=0, translate=(0, 0),scale=1, shear=shear_degree),transforms.ToTensor()])
-
-            task_branch.dataset_interface.transforms = transforms.Compose([original_transforms,shear_trans])
+            shear_trans = transforms.Compose([lambda img: transforms.functional.affine(img, angle=0, translate=(0, 0),scale=1, shear=shear_degree)])
+            # shear_trans = transforms.Compose([transforms.ToPILImage(),transforms.ToTensor()])
+            #
+            task_branch.dataset_interface.update_transformations(shear_trans)
             dataloader = task_branch.dataset_interface.return_data_loaders(branch_component='VAE', BATCH_SIZE=1)[split]
+            #task_branch.generate_samples_to_display()
 
             reconstruction_error_average, task_relatedness = task_branch.given_task_data_set_find_task_relatedness(
                 dataloader, num_samples_to_check=num_samples_to_check, shear_degree=shear_degree)
 
+            dataloader = task_branch.dataset_interface.return_data_loaders(branch_component='VAE', BATCH_SIZE=1)[split]
+            task_branch_no_recalibration_changes.reset_queue_variables()
+            reconstruction_error_average_no_recal, task_relatedness_no_recal = task_branch_no_recalibration_changes.given_task_data_set_find_task_relatedness(dataloader, num_samples_to_check=num_samples_to_check, shear_degree=shear_degree)
+
             print("   --- With shear degree:", shear_degree)
-            print("   --- Reconstruction error average", reconstruction_error_average, " Task relatedness",task_relatedness, "Number of samples:", num_samples_to_check)
+            print("   --- With Recal: Reconstruction error average", reconstruction_error_average, " Task relatedness",task_relatedness, "Number of samples:", num_samples_to_check)
+            print("   --- No Recal:   Reconstruction error average", reconstruction_error_average_no_recal, " Task relatedness",task_relatedness_no_recal, "Number of samples:", num_samples_to_check)
 
             if task_branch.is_need_to_recalibrate_queue:
                 print("   --- VAE quality has fallen below threshold of",task_branch.task_relatedness_threshold)
@@ -856,7 +887,7 @@ def test_concept_drift_for_single_task(task_branch, shear_degree_max,shear_degre
                                                                         is_new_categories_to_addded_to_existing_task=False,
                                                                         is_completely_new_task=False,
                                                                         epoch_improvement_limit=20,
-                                                                        learning_rate=LEARNR_VAE, betas=BETA_VAE,
+                                                                        learning_rate=LEARNR_VAE, betas=BETA_VAE,sample_limit=num_samples_to_check,
                                                                         is_save=is_save)
                 print("\nPseudo Samples - CNN")
                 task_branch.create_and_train_CNN(model_id="recalibrated wth shear "+str(shear_degree), num_epochs=EPOCH_CNN,
@@ -864,11 +895,14 @@ def test_concept_drift_for_single_task(task_branch, shear_degree_max,shear_degre
                                                                         is_frozen=False,
                                                                         is_off_shelf_model=True,
                                                                         epoch_improvement_limit=EPOCH_IMPROVE_LIMIT,
-                                                                        learning_rate=LEARNR_CNN,
+                                                                        learning_rate=LEARNR_CNN,sample_limit=num_samples_to_check,
                                                                         betas=BETA_CNN, is_save=is_save)
+                recal_count += 1
 
-                task_branch.run_end_of_training_benchmarks("recalibration vs no recalibration", task_branch.dataset_interface)
+            print("RECALIBRATION: ",recal_count," times")
+            task_branch.run_end_of_training_benchmarks("recalibration vs no recalibration", task_branch.dataset_interface)
 
+            print("NO RECALIBRATION")
             task_branch_no_recalibration_changes.run_end_of_training_benchmarks("recalibration vs no recalibration", task_branch.dataset_interface)
 
 

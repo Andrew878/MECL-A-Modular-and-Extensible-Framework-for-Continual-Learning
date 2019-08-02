@@ -83,9 +83,12 @@ class SyntheticDS(Dataset):
                 category = [category]
                 category = torch.tensor(np.array([category, ])).to(dtype=torch.long)#, device='cuda')
             else:
-                x_noisy = gaussian_filter(image.cpu().detach().numpy(), sigma=.5)
-                #print("here")
-                x_noisy = torch.Tensor(x_noisy).cpu()
+
+                x_noisy = image
+
+                #x_noisy = gaussian_filter(image.cpu().detach().numpy(), sigma=.5)
+                #x_noisy = torch.Tensor(x_noisy).cpu()
+
                 image = self.transforms['CNN']['test_to_image'](torch.squeeze(x_noisy).detach().numpy())
                 #image = torch.unsqueeze(x, 0)
                 # category = [category]

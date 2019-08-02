@@ -237,13 +237,13 @@ class CVAE(nn.Module):
 
             info = (class_with_best_fit, lowest_error_of_cat)
             if is_standardised_distance_check:
-                return [info,(class_with_best_fit_std_dev,lowest_error_of_cat_std_dev)]
+                return [info,(class_with_best_fit_std_dev,lowest_error_of_cat_std_dev)],reconstructed_x
 
 
             return [info], reconstructed_x
 
         else:
-            return list_by_cat
+            return list_by_cat, reconstructed_x
 
     def generate_single_random_sample(self, category, z=None,is_random_cat = False):
 

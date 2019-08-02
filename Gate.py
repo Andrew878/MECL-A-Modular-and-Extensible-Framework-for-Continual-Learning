@@ -36,7 +36,6 @@ class Gate:
 
             results_information = task_branch.given_observation_find_lowest_reconstruction_error(x,
                                                                                                  is_standardised_distance_check)
-
             if results_information[0][1] < lowest_recon_error:
                 lowest_recon_error = results_information[0][1]
                 lowest_recon_error_best_class = results_information[0][0]
@@ -91,5 +90,9 @@ class Gate:
         lowest_recon_error_best_task_branch, lowest_recon_error_best_class = self.allocate_sample_to_task_branch(x,
                                                                                                                  is_standardised_distance_check=False,
                                                                                                                  is_return_both_metrics=False)
+        x = lowest_recon_error_best_task_branch.dataset_interface.transformations['CNN']['test_to_image'](torch.squeeze(x))
+        #print(x.size())
+        x = torch.unsqueeze(x, 0)
+        #print(x.size())
         pred_cat, probability = lowest_recon_error_best_task_branch.classify_with_CNN(x)
         return lowest_recon_error_best_task_branch, pred_cat, probability
