@@ -269,7 +269,7 @@ transforms_CNN_SVHN = {
 
 transforms_VAE_one_channel_SVHN = {
                 'train': transforms.Compose([
-                    transforms.Grayscale(),
+                    transforms.Grayscale(num_output_channels=1),
                     Invert(),
                     transforms.Resize(image_height_MNIST),
                     #transforms.RandomRotation(10),
@@ -277,14 +277,14 @@ transforms_VAE_one_channel_SVHN = {
                     # transforms.Normalize(normalise_MNIST_mean, normalise_MNIST_std)
                 ]),
                 'val': transforms.Compose([
-                    transforms.Grayscale(),
+                    transforms.Grayscale(num_output_channels=1),
                     Invert(),
                     transforms.Resize(image_height_MNIST),
                     transforms.ToTensor(),
                     # transforms.Normalize(normalise_MNIST_mean, normalise_MNIST_std)
                 ]),
                 'test': transforms.Compose([
-                    transforms.Grayscale(),
+                    transforms.Grayscale(num_output_channels=1),
                     Invert(),
 
                     transforms.Resize(image_height_MNIST),
@@ -420,33 +420,21 @@ gate = Gate.Gate()
 for task in task_branch_list:
     task.generate_samples_to_display()
 
+
+
 if False:
-    gate.add_task_branch(mnist_task_branch, fashion_mnist_task_branch, emnist_task_branch, svhn_task_branch)
-
-    #print("Generation, Classification")
-    #Utils.test_generating_and_classification_ability_multi_tasks(task_branch_list, number_per_category=1000, device=device)
-
-    # print("Gate Allocation")
-    # Utils.test_gate_allocation(gate, mnist_data_and_interface, fashion_mnist_data_and_interface, emnist_data_and_interface,
-    #                            svhn_data_and_interface, number_tests_per_data_set=10000)
-
-    print("Best fit for a dataset from Gate options")
-    gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(fashion_mnist_data_and_interface, [], 100)
-    gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(mnist_data_and_interface, [], 100)
-    gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(emnist_data_and_interface, [], 100)
-    gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(svhn_data_and_interface, [], 100)
-
-if True:
     Utils.test_gate_versus_non_gate(mnist_task_branch, fashion_mnist_task_branch, emnist_task_branch, svhn_task_branch)
 
 #Utils.load_VAE_models_and_display_syn_images(PATH_MODELS,mnist_task_branch)
 
-is_synthetic_tests = False
+is_synthetic_tests = True
 if (is_synthetic_tests):
     print("New and improved synthetic")
-    print("\n\n\n\nEXTRA SYNTHETIC SAMPLES (x1.0 multiplier)....sigma is 0.5 ")
-    Utils.test_synthetic_samples_versus_normal_increasing(fashion_mnist_data_and_interface,PATH_MODELS,record_keeper,extra_new_cat_multi=1)
+    #print("\n\n\n\n(x1.0 multiplier)....sigma is 0.5 FASHION")
+    #Utils.test_synthetic_samples_versus_normal_increasing(fashion_mnist_data_and_interface,PATH_MODELS,record_keeper,extra_new_cat_multi=1)
+    print("\n\n\n\n(x1.0 multiplier)....sigma is 0.5 SVHN")
     Utils.test_synthetic_samples_versus_normal_increasing(svhn_data_and_interface,PATH_MODELS,record_keeper,extra_new_cat_multi=1)
+    print("\n\n\n\n(x1.0 multiplier)....sigma is 0.5 EMNIST")
     Utils.test_synthetic_samples_versus_normal_increasing(emnist_data_and_interface,PATH_MODELS,record_keeper,extra_new_cat_multi=1)
     #Utils.test_synthetic_samples_versus_normal_increasing_PRETRAINED_VAE(mnist_data_and_interface,PATH_MODELS,record_keeper,extra_new_cat_multi=1)
     #print("\n\n\n\nEXTRA SYNTHETIC SAMPLES (x0.8 multiplier)")
@@ -463,10 +451,28 @@ if (is_synthetic_tests):
     # Utils.test_synthetic_samples_versus_normal(mnist_data_and_interface, emnist_data_and_interface, PATH_MODELS,record_keeper, device,extra_new_cat_multi=1)
 
 
+print("\n\n\nCONCEPT DRIFT FOR FASHION AND SVHN\n\n\n")
+
 if False:
-    Utils.test_concept_drift_for_single_task(task_branch=mnist_task_branch, shear_degree_max=40,shear_degree_increments=10, split='train', num_samples_to_check=10000)
+    Utils.test_concept_drift_for_single_task(task_branch=svhn_task_branch, shear_degree_max=40,shear_degree_increments=10, split='train', num_samples_to_check=10000)
     Utils.test_concept_drift_for_single_task(task_branch=emnist_task_branch, shear_degree_max=40,shear_degree_increments=10, split='train', num_samples_to_check=10000)
 
+
+if False:
+    gate.add_task_branch(mnist_task_branch, fashion_mnist_task_branch, emnist_task_branch, svhn_task_branch)
+
+    #print("Generation, Classification")
+    #Utils.test_generating_and_classification_ability_multi_tasks(task_branch_list, number_per_category=1000, device=device)
+
+    # print("Gate Allocation")
+    # Utils.test_gate_allocation(gate, mnist_data_and_interface, fashion_mnist_data_and_interface, emnist_data_and_interface,
+    #                            svhn_data_and_interface, number_tests_per_data_set=10000)
+
+    print("Best fit for a dataset from Gate options")
+    gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(fashion_mnist_data_and_interface, [], 100)
+    gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(mnist_data_and_interface, [], 100)
+    gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(emnist_data_and_interface, [], 100)
+    gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(svhn_data_and_interface, [], 100)
 
 # i =1
 # for list in [['a','b'],['c','d'],['e','f'],['g','h'],['i','j']]:

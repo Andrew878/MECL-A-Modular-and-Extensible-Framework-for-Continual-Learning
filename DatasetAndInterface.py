@@ -8,6 +8,7 @@ from torchvision import datasets, transforms
 import torchvision.transforms.functional as TF
 import copy
 import matplotlib.pyplot as plt
+from Invert import Invert
 
 
 class DataSetAndInterface:
@@ -29,6 +30,7 @@ class DataSetAndInterface:
 
         elif (name == 'SVHN'):
             self.categories_list = [str(i)+" SVHN" for i in range(0, 10)]
+
         else:
             self.categories_list = dataset['train']['VAE'].classes
 
@@ -133,10 +135,10 @@ class DataSetAndInterface:
         is_count_freq = False
         is_plot_output = False
 
-        #print(self.label_to_index_dict)
-        #print(category_subset)
+        #print("self.label_to_index_dict",self.label_to_index_dict)
+        #print("category_subset",category_subset)
         category_subset_indices = [self.label_to_index_dict[i] for i in category_subset]
-        #print(category_subset_indices)
+        #print("category_subset_indices",category_subset_indices)
 
 
         subset_dataset = copy.deepcopy(self.dataset[split][branch_component])
@@ -147,23 +149,43 @@ class DataSetAndInterface:
 
         if is_count_freq:
             freq_check = {i: 0 for i in range(0, 26)}
-            print("length subset_before",len(subset_dataset))
+            #print("length subset_before",len(subset_dataset))
             for i in range(0, len(subset_dataset)):
                 image, cat = subset_dataset[i]
                 freq_check[cat] += 1
-            print(freq_check)
+            #print(freq_check)
 
         idx = torch.zeros(len(subset_dataset),dtype=torch.uint8)
         for cat_index in category_subset_indices:
-            # print(cat_index)
-            #print(subset_dataset.targets)
-            id_cat = subset_dataset.targets == cat_index
-            # print("id_cat",id_cat)
-            # print("idx",id_cat)
+            #print(cat_index)
+            if self.name == 'SVHN':
+                #print(subset_dataset.labels)
+                id_cat = torch.tensor(subset_dataset.labels) == cat_index
+                #print("sum",torch.sum(id_cat))
+                #id_cat = torch.tensor(id_cat)
+
+            else:
+                #print(subset_dataset.targets)
+                id_cat = subset_dataset.targets == cat_index
+            #print("id_cat",id_cat)
+            #print("idx",id_cat)
             idx += id_cat
-            # print("idx",idx)
-        subset_dataset.targets = subset_dataset.targets[idx]
-        subset_dataset.data = subset_dataset.data[idx]
+            #print("idx",idx)
+            #print("sum",torch.sum(idx))
+            #print("idx size",idx.size())
+            #print("idcat size",id_cat.size())
+        if self.name == 'SVHN':
+            #print(subset_dataset.labels)
+            subset_dataset.labels = torch.tensor(subset_dataset.labels)[idx]
+            #print(subset_dataset.labels)
+            subset_dataset.labels = subset_dataset.labels.numpy()
+            #print(subset_dataset.labels)
+            subset_dataset.data = torch.tensor(subset_dataset.data)[idx]
+            subset_dataset.data = subset_dataset.data.numpy()
+        else:
+            subset_dataset.targets = subset_dataset.targets[idx]
+            subset_dataset.data = subset_dataset.data[idx]
+
 
         if is_count_freq:
             freq_check = {i: 0 for i in range(0, 26)}
@@ -431,3 +453,227 @@ class DataSetAndInterface:
                 image, cat = subset_dataset[i]
                 freq_check[cat] += 1
             print(freq_check)
+
+    def update_transformations(self, new_transformation,  is_all = True):
+
+        normalise_for_PIL_mean = (0.5, 0.5, 0.5)
+        normalise_for_PIL_std = (0.5, 0.5, 0.5)
+        image_height_MNIST = 28
+
+        if (self.name == 'EMNIST'):
+            self.transformations['CNN'] = {
+                'train': transforms.Compose([
+                    lambda img: transforms.functional.rotate(img, -90),
+                    lambda img: transforms.functional.hflip(img),
+                    new_transformation,
+                    transforms.Resize(256),
+                    transforms.RandomResizedCrop(224),
+                    transforms.RandomRotation(10),
+                    transforms.ToTensor(),
+                    transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
+                    transforms.Normalize(normalise_for_PIL_mean, normalise_for_PIL_std)
+                ]),
+                'val': transforms.Compose([
+                    lambda img: transforms.functional.rotate(img, -90),
+                    lambda img: transforms.functional.hflip(img),
+                    new_transformation,
+                    transforms.Resize(256),
+                    transforms.CenterCrop(224),
+                    transforms.ToTensor(),
+                    transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
+                    transforms.Normalize(normalise_for_PIL_mean, normalise_for_PIL_std)
+                ]),
+                'test': transforms.Compose([
+                    lambda img: transforms.functional.rotate(img, -90),
+                    lambda img: transforms.functional.hflip(img),
+                    new_transformation,
+                    transforms.Resize(256),
+                    transforms.CenterCrop(224),
+                    transforms.ToTensor(),
+                    transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
+                    transforms.Normalize(normalise_for_PIL_mean, normalise_for_PIL_std)
+                ]),
+                'test_to_image': transforms.Compose([
+                    transforms.ToPILImage(),
+                    new_transformation,
+                    transforms.Resize(256),
+                    transforms.CenterCrop(224),
+                    transforms.ToTensor(),
+                    transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
+                    transforms.Normalize(normalise_for_PIL_mean, normalise_for_PIL_std)
+                ]),
+            }
+
+            self.transformations['VAE']= {
+                'train': transforms.Compose([
+                    lambda img: transforms.functional.rotate(img, -90),
+                    lambda img: transforms.functional.hflip(img),
+                    new_transformation,
+                    transforms.Resize(image_height_MNIST),
+                    # transforms.RandomRotation(10),
+                    transforms.ToTensor(),
+                    # transforms.Normalize(normalise_MNIST_mean, normalise_MNIST_std)
+                ]),
+                'val': transforms.Compose([
+                    lambda img: transforms.functional.rotate(img, -90),
+                    lambda img: transforms.functional.hflip(img),
+                    new_transformation,
+                    transforms.Resize(image_height_MNIST),
+                    transforms.ToTensor(),
+                    # transforms.Normalize(normalise_MNIST_mean, normalise_MNIST_std)
+                ]),
+                'test': transforms.Compose([
+                    lambda img: transforms.functional.rotate(img, -90),
+                    lambda img: transforms.functional.hflip(img),
+                    new_transformation,
+                    transforms.Resize(image_height_MNIST),
+                    transforms.ToTensor(),
+                    # transforms.Normalize(normalise_MNIST_mean, normalise_MNIST_std)
+                ]),
+            }
+
+
+        elif (self.name == 'SVHN'):
+
+            self.transformations['CNN'] = {
+                'train': transforms.Compose([
+                    transforms.Grayscale(),
+                    new_transformation,
+                    Invert(),
+                    transforms.Resize(256),
+                    transforms.RandomResizedCrop(224),
+                    transforms.RandomRotation(10),
+                    transforms.ToTensor(),
+                    transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
+                    transforms.Normalize(normalise_for_PIL_mean, normalise_for_PIL_std)
+                ]),
+                'val': transforms.Compose([
+                    transforms.Grayscale(),
+                    new_transformation,
+                    Invert(),
+                    transforms.Resize(256),
+                    transforms.CenterCrop(224),
+                    transforms.ToTensor(),
+                    transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
+                    transforms.Normalize(normalise_for_PIL_mean, normalise_for_PIL_std)
+                ]),
+                'test': transforms.Compose([
+                    transforms.Grayscale(),
+                    new_transformation,
+                    Invert(),
+                    transforms.Resize(256),
+                    transforms.CenterCrop(224),
+                    transforms.ToTensor(),
+                    transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
+                    transforms.Normalize(normalise_for_PIL_mean, normalise_for_PIL_std)
+                ]),
+                'test_to_image': transforms.Compose([
+                    transforms.ToPILImage(),
+                    transforms.Grayscale(),
+                    new_transformation,
+                    Invert(),
+                    transforms.Resize(256),
+                    transforms.CenterCrop(224),
+                    transforms.ToTensor(),
+                    transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
+                    transforms.Normalize(normalise_for_PIL_mean, normalise_for_PIL_std)
+                ]),
+            }
+            self.transformations['VAE'] = {
+                'train': transforms.Compose([
+                    transforms.Grayscale(num_output_channels=1),
+                    new_transformation,
+                    Invert(),
+                    transforms.Resize(image_height_MNIST),
+                    # transforms.RandomRotation(10),
+                    transforms.ToTensor(),
+                    # transforms.Normalize(normalise_MNIST_mean, normalise_MNIST_std)
+                ]),
+                'val': transforms.Compose([
+                    transforms.Grayscale(num_output_channels=1),
+                    new_transformation,
+                    Invert(),
+                    transforms.Resize(image_height_MNIST),
+                    transforms.ToTensor(),
+                    # transforms.Normalize(normalise_MNIST_mean, normalise_MNIST_std)
+                ]),
+                'test': transforms.Compose([
+                    transforms.Grayscale(num_output_channels=1),
+                    new_transformation,
+                    Invert(),
+
+                    transforms.Resize(image_height_MNIST),
+                    transforms.ToTensor(),
+                    # transforms.Normalize(normalise_MNIST_mean, normalise_MNIST_std)
+                ]),
+            }
+
+
+        else:
+            self.transformations['CNN'] = {
+                'train': transforms.Compose([
+                    new_transformation,
+                    transforms.Resize(256),
+                    transforms.RandomResizedCrop(224),
+                    transforms.RandomRotation(10),
+                    transforms.ToTensor(),
+                    transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
+                    transforms.Normalize(normalise_for_PIL_mean, normalise_for_PIL_std)
+                ]),
+                'val': transforms.Compose([
+                    new_transformation,
+                    transforms.Resize(256),
+                    transforms.CenterCrop(224),
+                    transforms.ToTensor(),
+                    transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
+                    transforms.Normalize(normalise_for_PIL_mean, normalise_for_PIL_std)
+                ]),
+                'test': transforms.Compose([
+                    new_transformation,
+                    transforms.Resize(256),
+                    transforms.CenterCrop(224),
+                    transforms.ToTensor(),
+                    transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
+                    transforms.Normalize(normalise_for_PIL_mean, normalise_for_PIL_std)
+                ]),
+                'test_to_image': transforms.Compose([
+                    transforms.ToPILImage(),
+                    new_transformation,
+                    transforms.Resize(256),
+                    transforms.CenterCrop(224),
+                    transforms.ToTensor(),
+                    transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
+                    transforms.Normalize(normalise_for_PIL_mean, normalise_for_PIL_std)
+                ]),
+            }
+
+            self.transformations['VAE'] = {
+                'train': transforms.Compose([
+                    new_transformation,
+                    transforms.Resize(image_height_MNIST),
+                    # transforms.RandomRotation(10),
+                    transforms.ToTensor(),
+                    # transforms.Normalize(normalise_MNIST_mean, normalise_MNIST_std)
+                ]),
+                'val': transforms.Compose([
+                    new_transformation,
+                    transforms.Resize(image_height_MNIST),
+                    transforms.ToTensor(),
+                    # transforms.Normalize(normalise_MNIST_mean, normalise_MNIST_std)
+                ]),
+                'test': transforms.Compose([
+                    new_transformation,
+                    transforms.Resize(image_height_MNIST),
+                    transforms.ToTensor(),
+                    # transforms.Normalize(normalise_MNIST_mean, normalise_MNIST_std)
+                ]),
+            }
+
+
+
+
+
+
+        for key1 in self.dataset:
+            for key2 in self.dataset[key1]:
+                self.dataset[key1][key2].transform = self.transformations[key2][key1]

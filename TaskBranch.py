@@ -549,7 +549,7 @@ class TaskBranch:
         self.synthetic_samples_for_reuse = {i: [] for i in self.dataset_splits}
 
         original_cat_index_to_new_cat_index_dict = {new_real_datasetInterface.label_to_index_dict[new_cat_label]:self.categories_list.index(new_cat_label) for new_cat_label in new_categories_to_add_to_existing_task}
-        #print(original_cat_index_to_new_cat_index_dict )
+        print(original_cat_index_to_new_cat_index_dict )
 
         blended_dataset = {split: {} for split in self.dataset_splits}
 

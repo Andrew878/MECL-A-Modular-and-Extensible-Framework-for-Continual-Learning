@@ -514,14 +514,14 @@ def test_synthetic_samples_versus_normal_increasing(original_task_datasetInterfa
                                                                    is_off_shelf_model=True,
                                                                    epoch_improvement_limit=EPOCH_IMPROVE_LIMIT,
                                                                    learning_rate=LEARNR_CNN,
-                                                                   betas=BETA_CNN, is_save=is_save)
+                                                                   betas=BETA_CNN, is_save=False)
             print("\nReal Samples - VAE")
             combined_task_branch_no_synthetic.create_and_train_VAE(model_id=name, num_epochs=EPOCH_VAE, hidden_dim=10,
                                                                    latent_dim=LAT_DIM_VAE,
                                                                    is_synthetic=False,is_take_existing_VAE=False, is_new_categories_to_addded_to_existing_task=False,
                                                                    epoch_improvement_limit=EPOCH_IMPROVE_LIMIT,
                                                                    learning_rate=LEARNR_VAE,
-                                                                   betas=BETA_VAE, is_save=is_save, batch_size=BATCH)
+                                                                   betas=BETA_VAE, is_save=False, batch_size=BATCH)
             # combined_task_branch_no_synthetic.load_existing_VAE(PATH_MODELS+"VAE MNIST0 - zero to 9 - nine real epochs50,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 88.93284345703125 increment9synth multi 1",False)
             # combined_task_branch_no_synthetic.load_existing_CNN(PATH_MODELS+"CNN MNIST0 - zero to 9 - nine real epochs10,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 0.9952000000000001 increment9synth multi 1")
 
