@@ -44,7 +44,7 @@ class DataSetAndInterface:
         #         self.dataset_targets[split][model] = torch.IntTensor(list_of_cats)
         #         print(name,split,model, self.dataset_targets[split][model])
 
-        #self.show_plots_of_dataset()
+        self.show_plots_of_dataset()
 
         self.label_to_index_dict = {k: v for v, k in enumerate(self.categories_list)}
         self.num_categories = len(self.categories_list)
@@ -59,8 +59,8 @@ class DataSetAndInterface:
     def show_plots_of_dataset(self, is_random = True):
         fig1 = plt.figure(figsize=(15, 15))
         x = 0
-        r = 6
-        c = 6
+        r = 10
+        c = 10
         for i in range(x, r * c):
             img, cat = self.dataset['train']['VAE'][i]
             img = img.view(28, 28).data

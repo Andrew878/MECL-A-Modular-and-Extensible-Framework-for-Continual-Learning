@@ -155,6 +155,7 @@ class CVAE(nn.Module):
 
         # sample from the distribution having latent parameters z_mu, z_var
         # reparameterize
+        #std = torch.exp(z_var / 2)
         std = torch.exp(z_var / 2)*0
         eps = torch.randn_like(std)
         x_sample = eps.mul(std).add_(z_mu)
@@ -174,6 +175,7 @@ class CVAE(nn.Module):
         RCL = F.binary_cross_entropy(reconstructed_x, x, reduction='sum')
         # kl divergence loss
         KLD = -0.5 * torch.sum(1 + log_var - mean.pow(2) - log_var.exp())
+        KLD = 0
 
         #print(RCL)
         #print(KLD,"\n")

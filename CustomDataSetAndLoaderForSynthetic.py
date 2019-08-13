@@ -8,7 +8,7 @@ from scipy.ndimage import gaussian_filter
 
 class SyntheticDS(Dataset):
     """
-    A customized data loader.
+    A customized data loader. This is used when original data and synthetic data are blended into one data set.
     """
 
     def __init__(self, synthetic_data_list_unique_label, transforms, real_data_to_blend, combined_categories,number_synthetic_categories, original_cat_index_to_new_cat_index_dict):

@@ -62,13 +62,14 @@ class Gate:
     def given_new_dataset_find_best_fit_domain_from_existing_tasks(self, datasetAndinterface, category_subset,
                                                                    num_samples_to_check=100):
 
-        print("*** Checking the following new data: ", datasetAndinterface.name, )
+        print("*** Checking the following new data: ", datasetAndinterface.name, "Size: ",num_samples_to_check)
 
+        # was previously training set and capped at 100
         if len(category_subset) == 0:
-            dataloader = datasetAndinterface.return_data_loaders(branch_component='VAE', BATCH_SIZE=1)['train']
+            dataloader = datasetAndinterface.return_data_loaders(branch_component='VAE', BATCH_SIZE=1)['val']
         else:
             dataloader = datasetAndinterface.obtain_dataloader_with_subset_of_categories(branch_component='VAE',
-                                                                                         split='train',
+                                                                                         split='val',
                                                                                          category_subset=category_subset,
                                                                                          BATCH_SIZE=1)
 

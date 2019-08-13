@@ -2,6 +2,7 @@ import torch
 import torch.optim
 import torchvision.transforms.functional as TF
 import CVAE
+import math
 import Utils
 import time
 import copy
@@ -46,7 +47,8 @@ class TaskBranch:
         self.history_queue_of_task_relatedness = []
         self.is_need_to_recalibrate_queue = False
         self.queue_sum = 0
-        self.task_relatedness_threshold = 0.9
+        self.task_relatedness_threshold = 0.95
+
 
         self.sample_limit = float('Inf')
 
@@ -132,9 +134,9 @@ class TaskBranch:
             if best_train_loss > train_loss:
                 best_train_loss = train_loss
                 patience_counter = 1
-
+                best_model_wts = copy.deepcopy(self.VAE_most_recent.state_dict())
                 # send to CPU to save on GPU RAM
-                #best_model_wts = copy.deepcopy(self.VAE_most_recent.state_dict())
+
                 print(f'Epoch {epoch}, Train Loss: {train_loss:.2f}, Val Loss: {val_loss:.2f} ', time_elapsed,
                       "**** new best ****")
 
@@ -149,7 +151,7 @@ class TaskBranch:
         print('\nTraining complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
         print('Best train loss: {:4f}'.format(best_train_loss))
 
-        #self.VAE_most_recent.load_state_dict(best_model_wts)
+        self.VAE_most_recent.load_state_dict(best_model_wts)
 
         model_string = "VAE " + self.task_name + " epochs" + str(num_epochs) + ",batch" + str(
             batch_size) + ",z_d" + str(
@@ -197,7 +199,7 @@ class TaskBranch:
 
             # To restrict training size
             if sample_limit < (i*data_loader.batch_size):
-                print("break at ", i*data_loader.batch_size)
+                #print("break at ", i*data_loader.batch_size)
                 break
             # reshape the data into [batch_size, 784]
             #print(x.size())
@@ -211,7 +213,7 @@ class TaskBranch:
             # convert y into one-hot encoding
             y_original = y
             #print("going into one hot")
-            #print(y)
+            # print(y)
             y = Utils.idx2onehot(y.view(-1, 1), self.num_categories_in_task)
             y = y.to(self.device)
 
@@ -447,6 +449,8 @@ class TaskBranch:
     def generate_single_random_sample(self, category, is_random_cat=False):
         return self.VAE_most_recent.generate_single_random_sample(category, is_random_cat)
 
+
+
     def run_a_CNN_epoch_calculate_loss(self, data_loader, criterion, is_train, samples_limited_percentage = 1, sample_limit = float('Inf'),is_synthetic_blend = False):
 
         running_loss = 0.0
@@ -622,7 +626,7 @@ class TaskBranch:
         # plt.ioff()
         # plt.show()
 
-    def run_end_of_training_benchmarks(self, test_name, dataset_interface = None, is_save = True, is_gaussian_noise_required = False):
+    def run_end_of_training_benchmarks(self, test_name, dataset_interface = None, is_save = True, is_gaussian_noise_required = False, is_extra_top_three_method = False):
 
         is_plot_results = False
 
@@ -675,7 +679,7 @@ class TaskBranch:
 
                 with torch.no_grad():
                     outputs = self.CNN_most_recent(x)
-                    _, preds = torch.max(outputs, 1)
+                    prob, preds = torch.max(outputs, 1)
                     # print(preds)
                     # criterion = nn.CrossEntropyLoss()
                     # loss = criterion(outputs.to(device), y)
@@ -689,7 +693,7 @@ class TaskBranch:
 
                 if is_plot_results:
                     if(i<10):
-                        print("actual",y.data,"classified",preds)
+                        print("actual",y.data,"classified",preds, "no Gaussian noise")
                         fig1 = plt.figure(figsize=(5, 5))
                         ax = fig1.add_subplot(1, 3, 1)
                         ax.axis('off')
@@ -707,7 +711,7 @@ class TaskBranch:
                 x_noisy = gaussian_filter(x.cpu().detach().numpy(), sigma=.5)
                 #x_noisy = gaussian_filter(x.cpu().detach().numpy(), sigma=1)
                 x_noisy = torch.Tensor(x_noisy)
-                x = x.to(self.device)
+                x_original = x.to(self.device)
                 y_original = y
                 y_one_hot = Utils.idx2onehot(y.view(-1, 1), self.num_categories_in_task)
                 y = y.to(self.device)
@@ -716,9 +720,9 @@ class TaskBranch:
                 #generated_x, _, _ = self.VAE_most_recent.encode_then_decode_without_randomness(x,y_one_hot.float())
                 #__, generated_x = self.VAE_most_recent.get_sample_reconstruction_error_from_all_category(x)
                 #print(x_noisy.size())
-                x = self.dataset_interface.transformations['CNN']['test_to_image']( torch.squeeze(x_noisy))
+                x_trans = self.dataset_interface.transformations['CNN']['test_to_image']( torch.squeeze(x_noisy))
                 #x = self.dataset_interface.transformations['CNN']['test_to_image'](torch.squeeze(generated_x.cpu()).detach().numpy())
-                x = torch.unsqueeze(x,0)
+                x = torch.unsqueeze(x_trans,0)
                 #print(generated_x.size())
                 #print(x.size())
                 x = x.to(self.device)
@@ -726,10 +730,57 @@ class TaskBranch:
 
                 with torch.no_grad():
                     outputs = self.CNN_most_recent(x)
-                    _, preds = torch.max(outputs, 1)
+
+                    prob, preds = torch.max(outputs, 1)
+
+                    # print(outputs)
                     # print(preds)
-                    # criterion = nn.CrossEntropyLoss()
-                    # loss = criterion(outputs.to(device), y)
+                    # print(prob)
+                    # print(y.data)
+                    n_checks = 10
+
+
+                    if (prob<math.log(0.999999999) and is_extra_top_three_method):
+
+                        one_hot_list = []
+                        index_to_cat = []
+                        prob_list = []
+                        idx = (-outputs.cpu().numpy()).argsort()[:n_checks]
+                        # print("here", math.log(0.8))
+                        # print("idx", idx)
+                        for i in range(0,n_checks):
+                            y_one_hot1 = Utils.idx2onehot(torch.tensor([[idx[0,min(i,len(idx))]]]), self.num_categories_in_task).to('cuda')
+                            #y_one_hot3 = Utils.idx2onehot(torch.tensor([[idx[0,min(2,len(idx))]]]), self.num_categories_in_task).to('cuda')
+                            #y_one_hot2 = Utils.idx2onehot(torch.tensor([[idx[0,min(i,len(idx))]]]), self.num_categories_in_task).to('cuda')
+
+                            x_recon1, _, _ = self.VAE_most_recent.encode_then_decode_without_randomness(x_original, y_one_hot)
+                            #x_recon2, _, _ = self.VAE_most_recent.encode_then_decode_without_randomness(x_original, y_one_hot2)
+                            #x_recon3, _, _ = self.VAE_most_recent.encode_then_decode_without_randomness(x_original, y_one_hot3)
+                            x_trans1 = self.dataset_interface.transformations['CNN']['test_to_image'](torch.squeeze(x_recon1.cpu()))
+                            #x_trans2 = self.dataset_interface.transformations['CNN']['test_to_image'](torch.squeeze(x_recon2.cpu()))
+                            #x_trans3 = self.dataset_interface.transformations['CNN']['test_to_image'](torch.squeeze(x_recon3.cpu()))
+
+                            outputs1 = self.CNN_most_recent(torch.unsqueeze(x_trans1,0).to(self.device))
+                            prob1, preds1 = torch.max(outputs1, 1)
+                            prob_list.append(prob1)
+                            index_to_cat.append(preds1)
+
+                        #outputs2 = self.CNN_most_recent(torch.unsqueeze(x_trans2,0).to(self.device))
+                        #prob2, preds2 = torch.max(outputs2, 1)
+                        #outputs3 = self.CNN_most_recent(torch.unsqueeze(x_trans3,0).to(self.device))
+                        #prob3, preds3 = torch.max(outputs3, 1)
+                        #index_to_cat = [preds1,preds2,preds3]
+                        # print(prob_ten)
+                        #print(prob_list)
+                        prob_ten = torch.tensor([prob_list])
+                        prob, preds = torch.max(prob_ten,1)
+                        cat_chosen = index_to_cat[preds.cpu().item()]
+                        preds =cat_chosen
+
+
+                    # print(preds)
+                    # print(prob)
+                    # print(y.data,"\n")
 
                     correct = torch.sum(preds == y.data)
 
@@ -740,7 +791,7 @@ class TaskBranch:
 
                 if is_plot_results:
                     if(i<20):
-                        print("actual",y.data,"classified",preds)
+                        print("actual",y.data,"classified",preds, "contains gaussian noise")
                         fig1 = plt.figure(figsize=(5, 5))
                         ax = fig1.add_subplot(1, 3, 1)
                         ax.axis('off')
@@ -805,6 +856,8 @@ class TaskBranch:
             img2 = self.VAE_most_recent.generate_single_random_sample(cat ,z2).cpu().numpy()
             #img2 = self.dataset_interface.transformations['CNN']['test_to_image'](self.VAE_most_recent.generate_single_random_sample(cat ,z2).cpu())[0].cpu().numpy()
             img3 = self.VAE_most_recent.generate_single_random_sample(cat ,z3).cpu().numpy()
+
+
             #ax = fig1.add_subplot(r, c, cat + 1)
             ax = fig1.add_subplot(1, 3, 1)
             ax.axis('off')

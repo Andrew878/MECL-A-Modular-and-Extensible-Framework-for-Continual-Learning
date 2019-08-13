@@ -10,6 +10,7 @@ from torch import max, zeros
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 import matplotlib.pyplot as plt
+import random
 
 
 def idx2onehot(idx, num_categories):
@@ -269,7 +270,7 @@ def test_pre_trained_versus_non_pre_trained(new_task_to_be_trained, template_tas
     template_task = copy.deepcopy(template_task)
 
     print("--- Task to be trained: ", new_task_to_be_trained.task_name)
-    print("*********** Training from scratch ")
+    print("*********** Training with pretrained weights from: ", template_task.task_name)
 
     new_task_to_be_trained.create_and_train_VAE(model_id=model_id + "untrained", num_epochs=num_epochs,
                                                 batch_size=batch_size,
@@ -279,7 +280,9 @@ def test_pre_trained_versus_non_pre_trained(new_task_to_be_trained, template_tas
                                                 epoch_improvement_limit=epoch_improvement_limit,
                                                 learning_rate=learning_rate, betas=betas, sample_limit = sample_limit,is_save=is_save)
 
-    print("*********** Training with pretrained weights from: ", template_task.task_name)
+    average_train_loss_pre_train =  new_task_to_be_trained.overall_average_reconstruction_error
+
+    print("*********** Training from scratch ")
 
     new_task_to_be_trained.create_and_train_VAE(model_id=model_id + "pretrained", num_epochs=num_epochs,
                                                 batch_size=batch_size, hidden_dim=10,
@@ -287,6 +290,10 @@ def test_pre_trained_versus_non_pre_trained(new_task_to_be_trained, template_tas
                                                 teacher_VAE=None, is_completely_new_task=True,
                                                 epoch_improvement_limit=epoch_improvement_limit,
                                                 learning_rate=learning_rate, betas=betas,sample_limit = sample_limit, is_save=is_save)
+
+    average_train_loss_scratch =  new_task_to_be_trained.overall_average_reconstruction_error
+
+    return average_train_loss_pre_train, average_train_loss_scratch
 
 
 def test_synthetic_samples_versus_normal(original_task_datasetInterface, added_task_datasetInterface, PATH_MODELS,record_keeper,
@@ -567,7 +574,7 @@ def test_synthetic_samples_versus_normal_increasing(original_task_datasetInterfa
             torch.cuda.empty_cache()
 
 
-def test_synthetic_samples_versus_normal_increasing_PRETRAINED_VAE(original_task_datasetInterface, PATH_MODELS,record_keeper,
+def test_synthetic_samples_versus_normal_increasing_PRETRAINED_VAE(original_task_datasetInterface,PATH_MODELS,model_string_vae, model_string_cnn, record_keeper,
                                          device='cuda',number_increments=10, extra_new_cat_multi=1):
     print("***** Testing pseudo-rehearsal versus real samples")
 
@@ -596,17 +603,7 @@ def test_synthetic_samples_versus_normal_increasing_PRETRAINED_VAE(original_task
     combined_task_branch_synthetic = None
 
     FOLDER = "real_versus_synth_models/"
-    model_string = []
-    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 101.1282752212213 increment0synth multi 1")
-    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 78.45619751514317 increment1synth multi 1")
-    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 89.60624052141372 increment2synth multi 1")
-    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 95.91765151826462 increment3synth multi 1")
-    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 98.84272441048243 increment4synth multi 1")
-    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 102.96877034505208 increment5synth multi 1")
-    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 104.12568975369538 increment6synth multi 1")
-    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 104.48726003921449 increment7synth multi 1")
-    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 108.8118243938762 increment8synth multi 1")
-    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 109.9276000371655 increment9synth multi 1")
+
 
 
     for increment in range(0, number_increments):
@@ -627,13 +624,13 @@ def test_synthetic_samples_versus_normal_increasing_PRETRAINED_VAE(original_task
             print("Training VAE - Starting")
 
             print("\n Beginning point only ",category_list_subset)
+            combined_task_branch_synthetic.load_existing_VAE(PATH_MODELS + model_string_vae[increment])
+            combined_task_branch_synthetic.num_categories_in_task = increment+1
 
-
-            combined_task_branch_synthetic.load_existing_VAE(PATH_MODELS+FOLDER+"VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 101.1282752212213 increment0synth multi 1",False)
-            combined_task_branch_synthetic.load_existing_CNN(PATH_MODELS+FOLDER+"CNN MNIST pseudo epochs10,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 1.0 increment0synth multi 1")
+            print("\nPseudo Samples - CNN")
+            combined_task_branch_synthetic.load_existing_CNN(PATH_MODELS + model_string_cnn[increment])
 
             given_test_set_compare_synthetic_and_normal_approaches([combined_task_branch_synthetic], task_DIS_orig,category_list_subset, extra_new_cat_multi)
-
 
             record_keeper.record_to_file("only blur post:real_versus fake continual learning adding "+str(category_list_subset[0])+" to "+str(category_list_subset[-1])+" synth multi "+str(extra_new_cat_multi))
 
@@ -642,33 +639,16 @@ def test_synthetic_samples_versus_normal_increasing_PRETRAINED_VAE(original_task
 
         else:
 
-
             print("\n------------ Pseudo Samples ",category_list_subset)
 
-
-
-            print("\nPseudo Samples - create samples")
-            combined_task_branch_synthetic.create_blended_dataset_with_synthetic_samples(task_DIS_orig,[category_list_subset[-1]],extra_new_cat_multi)
-
-
-
             print("\nPseudo Samples - Loading VAE")
-            combined_task_branch_synthetic.load_existing_VAE(PATH_MODELS + FOLDER + model_string[increment])
+            combined_task_branch_synthetic.load_existing_VAE(PATH_MODELS + model_string_vae[increment])
             combined_task_branch_synthetic.num_categories_in_task = increment+1
 
-
             print("\nPseudo Samples - CNN")
-            combined_task_branch_synthetic.create_and_train_CNN(model_id=name, num_epochs=EPOCH_CNN, batch_size=BATCH,
-                                                                is_frozen=False,
-                                                                is_off_shelf_model=True,
-                                                                epoch_improvement_limit=EPOCH_IMPROVE_LIMIT,
-                                                                learning_rate=LEARNR_CNN,
-                                                                betas=BETA_CNN, is_save=is_save)
-
-
+            combined_task_branch_synthetic.load_existing_CNN(PATH_MODELS + model_string_cnn[increment])
 
             given_test_set_compare_synthetic_and_normal_approaches([combined_task_branch_synthetic], task_DIS_orig,category_list_subset, extra_new_cat_multi)
-
 
             record_keeper.record_to_file("only blur post:real_versus fake continual learning adding "+str(category_list_subset)+" synth multi "+str(extra_new_cat_multi))
 
@@ -684,9 +664,11 @@ def given_test_set_compare_synthetic_and_normal_approaches(task_branch_list, dat
     for task_branch in task_branch_list:
 
         print("\n_____________No blurring")
-        task_branch.run_end_of_training_benchmarks("real_versus fake continual learning adding "+str(new_cats_added)+" synth multi "+str(extra_new_cat_multi),dataSetInter,is_gaussian_noise_required=False)
+        task_branch.run_end_of_training_benchmarks("real_versus fake continual learning adding "+str(new_cats_added)+" synth multi "+str(extra_new_cat_multi),dataSetInter,is_gaussian_noise_required=False, is_save=False)
         print("\n_____________Blurring")
-        task_branch.run_end_of_training_benchmarks("real_versus fake continual learning adding "+str(new_cats_added)+" synth multi "+str(extra_new_cat_multi),dataSetInter,is_gaussian_noise_required=True)
+        task_branch.run_end_of_training_benchmarks("real_versus fake continual learning adding "+str(new_cats_added)+" synth multi "+str(extra_new_cat_multi),dataSetInter,is_gaussian_noise_required=True, is_save=False)
+        print("\n_____________Blurring+ best select")
+        task_branch.run_end_of_training_benchmarks("real_versus fake continual learning adding "+str(new_cats_added)+" synth multi "+str(extra_new_cat_multi),dataSetInter,is_gaussian_noise_required=True, is_extra_top_three_method=True, is_save=False)
 
 
 
@@ -858,6 +840,7 @@ def test_concept_drift_for_single_task(task_branch, shear_degree_max,shear_degre
             # shear_trans = transforms.Compose([transforms.ToPILImage(),transforms.ToTensor()])
             #
             task_branch.dataset_interface.update_transformations(shear_trans)
+            task_branch_no_recalibration_changes.dataset_interface.update_transformations(shear_trans)
             dataloader = task_branch.dataset_interface.return_data_loaders(branch_component='VAE', BATCH_SIZE=1)[split]
             #task_branch.generate_samples_to_display()
 
@@ -936,7 +919,7 @@ def load_VAE_models_and_display_syn_images(PATH_MODELS, task_branch):
         i += 1
 
     task_branch.load_existing_CNN(PATH_MODELS+FOLDER+"CNN MNIST pseudo epochs10,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 1.0 increment9synth multi 1")
-    task_branch.run_end_of_training_benchmarks("double check", is_save=False)
+    task_branch.run_end_of_training_benchmarks("double check", is_save=False, is_gaussian_noise_required=True)
 
     model_string = []
     model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 101.1282752212213 increment0synth multi 1")
@@ -958,3 +941,122 @@ def load_VAE_models_and_display_syn_images(PATH_MODELS, task_branch):
         #print("num cats ",i,"load",string)
         #task_branch.generate_samples_to_display()
         i += 1
+
+def distance_calculation(*task_branches, num_per_domain = 10):
+
+    list_images_all = []
+
+    dist = np.zeros((len(task_branches),len(task_branches)))
+    dist_recon = np.zeros((len(task_branches),len(task_branches)))
+
+    for i in range(0, num_per_domain):
+
+        for i in range(0, len(task_branches)):
+            for j in range(0, len(task_branches)):
+                task1 = task_branches[i]
+                task2 = task_branches[j]
+                task1.VAE_most_recent.send_all_to_GPU()
+                task2.VAE_most_recent.send_all_to_GPU()
+
+                rand_int1 = random.randint(0,task1.dataset_interface.training_set_size-1)
+                rand_int2 = random.randint(0,task2.dataset_interface.training_set_size-1)
+                rand_image1,cat1 = task1.dataset_interface.dataset['train']['VAE'].__getitem__(rand_int1)
+                rand_image2,cat2 = task2.dataset_interface.dataset['train']['VAE'].__getitem__(rand_int2)
+                dist_single = np.sqrt(np.sum((rand_image1.numpy()-rand_image2.numpy())**2))
+
+
+                dist[i,j] += dist_single
+
+
+                #rand_image1,cat1 = task1.dataset_interface.dataset['train']['VAE'].__getitem__(rand_int1)
+                #rand_image2,cat2 = task2.dataset_interface.dataset['train']['VAE'].__getitem__(rand_int2)
+
+                #print(torch.tensor([[cat1]]))
+                cat1 = idx2onehot(torch.tensor([[cat1]]), task1.num_categories_in_task)
+                cat1 = cat1.to('cuda')
+
+                cat2 = idx2onehot(torch.tensor([[cat2]]), task2.num_categories_in_task)
+                cat2 = cat2.to('cuda')
+
+                rand_image1_recon,_,_ = task1.VAE_most_recent.encode_then_decode_without_randomness(rand_image1.to('cuda'),cat1)
+                rand_image2_recon,_,_ = task2.VAE_most_recent.encode_then_decode_without_randomness(rand_image2.to('cuda'),cat2)
+
+
+                rand_image1_recon = rand_image1_recon.cpu().detach().numpy()
+                rand_image2_recon = rand_image2_recon.cpu().detach().numpy()
+
+                dist_single_recon = np.sqrt(np.sum(((rand_image1_recon-rand_image2_recon)**2)))
+                dist_recon[i,j] += dist_single_recon
+
+
+
+
+
+    print("no recon")
+    print(dist)
+    print(dist/num_per_domain)
+
+    print("with recon")
+    print(dist_recon)
+    print(dist_recon/num_per_domain)
+
+
+def pass_through_images_in_vaes(*task_branches, num_per_domain = 10):
+
+    list_images_all = []
+
+    dist = np.zeros((len(task_branches),len(task_branches)))
+    dist_recon = np.zeros((len(task_branches),len(task_branches)))
+
+
+    for i in range(0, num_per_domain):
+        fig2 = plt.figure(figsize=(15, 15))
+
+        image_count =1
+        for i in range(0, len(task_branches)):
+            task1 = task_branches[i]
+            rand_int1 = random.randint(0,task1.dataset_interface.training_set_size-1)
+            rand_image1,cat1 = task1.dataset_interface.dataset['train']['VAE'].__getitem__(rand_int1)
+
+            ax = fig2.add_subplot(len(task_branches), len(task_branches) + 1, image_count)
+            ax.axis('off')
+            ax.set_title("Original "+task1.task_name)
+            ax.imshow(torch.squeeze(rand_image1), cmap='gray')
+            image_count += 1
+
+            for j in range(0, len(task_branches)):
+                task2 = task_branches[j]
+                task1.VAE_most_recent.send_all_to_GPU()
+                task2.VAE_most_recent.send_all_to_GPU()
+
+
+
+                #print(torch.tensor([[cat1]]))
+
+
+                rand_image1 = rand_image1.to('cuda')
+
+                info, rand_image1_recon = task2.VAE_most_recent.get_sample_reconstruction_error_from_all_category(rand_image1, by_category_mean_std_of_reconstruction_error=None, is_random = False, only_return_best = True, is_standardised_distance_check = False)
+
+                #print(info)
+
+                rand_image1_recon = torch.squeeze(rand_image1_recon).cpu().detach().numpy()
+                dist_single = np.sqrt(np.sum((rand_image1.cpu().detach().numpy() - rand_image1_recon) ** 2))
+
+
+                ax = fig2.add_subplot(len(task_branches), len(task_branches) + 1, image_count)
+
+                #print(task2.task_name+" "+str(info[0][0]) + f'\n Euclidean dist {dist_single:.3f}+\n Recon err {info[0][1]:.3f}')
+
+
+                ax.axis('off')
+                ax.set_title(task2.task_name + f'\n Euclidean dist {dist_single:.3f}\n Recon err {info[0][1]:.3f}')
+                ax.imshow(rand_image1_recon, cmap='gray')
+                image_count += 1
+
+        plt.ioff()
+        plt.show()
+
+    print()
+    print()
+
