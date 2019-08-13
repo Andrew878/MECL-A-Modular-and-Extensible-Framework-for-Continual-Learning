@@ -259,9 +259,9 @@ class TaskBranch:
         if is_calculate_mean_std:
             print(self.task_name, " - Loaded VAE model, now calculating reconstruction error mean, std")
             self.obtain_VAE_recon_error_mean_and_std_per_class(PATH)
-        else:
-            self.by_category_mean_std_of_reconstruction_error = mpu.io.read(PATH + "mean,std.pickle")
-            self.overall_average_reconstruction_error = mpu.io.read(PATH + "overallmean.pickle")
+        # else:
+        #     self.by_category_mean_std_of_reconstruction_error = mpu.io.read(PATH + "mean,std.pickle")
+        #     self.overall_average_reconstruction_error = mpu.io.read(PATH + "overallmean.pickle")
 
     def create_and_train_CNN(self, model_id, num_epochs=30, batch_size=64, is_frozen=False, is_off_shelf_model=False,
                              epoch_improvement_limit=20, learning_rate=0.0003, betas=(0.999, .999), weight_decay = 0.0001, is_save=False,sample_limit = float('Inf'), is_synthetic_blend = False):
@@ -741,7 +741,7 @@ class TaskBranch:
                     n_checks = 10
 
 
-                    if (prob<math.log(0.999999999) and is_extra_top_three_method):
+                    if (prob<math.log(0.5) and is_extra_top_three_method):
 
                         one_hot_list = []
                         index_to_cat = []

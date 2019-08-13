@@ -395,36 +395,36 @@ if is_saving:
 else:
     print()
     is_update_mean_std = False
-    mnist_task_branch.load_existing_VAE(PATH_MODELS_INITIAL+"VAE MNIST epochs100,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 84.82801083984376 final with best state",is_update_mean_std)
-    fashion_mnist_task_branch.load_existing_VAE(PATH_MODELS_INITIAL+"VAE Fashion epochs100,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 227.5021029296875 final with best state", is_update_mean_std)
-
-    mnist_task_branch.load_existing_CNN(
-        PATH_MODELS_INITIAL + "CNN MNIST epochs50,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 0.9968 final")
-    fashion_mnist_task_branch.load_existing_CNN(
-        PATH_MODELS_INITIAL + "CNN Fashion epochs50,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 0.9419000000000001 final")
-
-    emnist_task_branch.load_existing_VAE(PATH_MODELS_INITIAL+"VAE EMNIST epochs100,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 127.20466226039788 final with best state",is_update_mean_std)
-    svhn_task_branch.load_existing_VAE(PATH_MODELS_INITIAL+"VAE SVHN epochs100,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 493.7761688676082 final with best state", is_update_mean_std)
-
-    emnist_task_branch.load_existing_CNN(
-        PATH_MODELS_INITIAL + "CNN EMNIST epochs50,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 0.9559615384615384 final")
-    svhn_task_branch.load_existing_CNN(
-        PATH_MODELS_INITIAL + "CNN SVHN epochs50,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 0.9726106330669944 final")
-    # mnist_task_branch.load_existing_VAE(PATH_MODELS_INITIAL+"VAE MNIST epochs100,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 100000000000 final",is_update_mean_std)
-    # fashion_mnist_task_branch.load_existing_VAE(PATH_MODELS_INITIAL+"VAE Fashion epochs100,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 100000000000 final", is_update_mean_std)
+    # mnist_task_branch.load_existing_VAE(PATH_MODELS_INITIAL+"VAE MNIST epochs100,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 84.82801083984376 final with best state",is_update_mean_std)
+    # fashion_mnist_task_branch.load_existing_VAE(PATH_MODELS_INITIAL+"VAE Fashion epochs100,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 227.5021029296875 final with best state", is_update_mean_std)
     #
     # mnist_task_branch.load_existing_CNN(
     #     PATH_MODELS_INITIAL + "CNN MNIST epochs50,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 0.9968 final")
     # fashion_mnist_task_branch.load_existing_CNN(
     #     PATH_MODELS_INITIAL + "CNN Fashion epochs50,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 0.9419000000000001 final")
     #
-    # emnist_task_branch.load_existing_VAE(PATH_MODELS_INITIAL+"VAE EMNIST epochs100,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 127.45233919192583 final",is_update_mean_std)
-    # svhn_task_branch.load_existing_VAE(PATH_MODELS_INITIAL+"VAE SVHN epochs100,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 493.7940254162998 final", is_update_mean_std)
+    # emnist_task_branch.load_existing_VAE(PATH_MODELS_INITIAL+"VAE EMNIST epochs100,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 127.20466226039788 final with best state",is_update_mean_std)
+    # svhn_task_branch.load_existing_VAE(PATH_MODELS_INITIAL+"VAE SVHN epochs100,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 493.7761688676082 final with best state", is_update_mean_std)
     #
     # emnist_task_branch.load_existing_CNN(
     #     PATH_MODELS_INITIAL + "CNN EMNIST epochs50,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 0.9559615384615384 final")
     # svhn_task_branch.load_existing_CNN(
     #     PATH_MODELS_INITIAL + "CNN SVHN epochs50,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 0.9726106330669944 final")
+    mnist_task_branch.load_existing_VAE(PATH_MODELS_INITIAL+"VAE MNIST epochs100,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 100000000000 final",is_update_mean_std)
+    fashion_mnist_task_branch.load_existing_VAE(PATH_MODELS_INITIAL+"VAE Fashion epochs100,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 100000000000 final", is_update_mean_std)
+
+    mnist_task_branch.load_existing_CNN(
+        PATH_MODELS_INITIAL + "CNN MNIST epochs50,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 0.9968 final")
+    fashion_mnist_task_branch.load_existing_CNN(
+        PATH_MODELS_INITIAL + "CNN Fashion epochs50,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 0.9419000000000001 final")
+
+    emnist_task_branch.load_existing_VAE(PATH_MODELS_INITIAL+"VAE EMNIST epochs100,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 127.45233919192583 final",is_update_mean_std)
+    svhn_task_branch.load_existing_VAE(PATH_MODELS_INITIAL+"VAE SVHN epochs100,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 493.7940254162998 final", is_update_mean_std)
+
+    emnist_task_branch.load_existing_CNN(
+        PATH_MODELS_INITIAL + "CNN EMNIST epochs50,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 0.9559615384615384 final")
+    svhn_task_branch.load_existing_CNN(
+        PATH_MODELS_INITIAL + "CNN SVHN epochs50,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 0.9726106330669944 final")
 
 
 
@@ -441,7 +441,7 @@ gate = Gate.Gate()
 
 
 
-if True:
+if False:
     Utils.test_gate_versus_non_gate(mnist_task_branch)
     #Utils.test_gate_versus_non_gate(mnist_task_branch, fashion_mnist_task_branch, emnist_task_branch, svhn_task_branch)
 
@@ -464,14 +464,6 @@ if (is_synthetic_tests):
 
     #Utils.compare_pretrained_task_branches(mnist_data_and_interface, emnist_data_and_interface, PATH_MODELS,record_keeper)
 
-    #
-    # print("\n\n\n\nEXTRA SYNTHETIC SAMPLES (x0.8 multiplier)")
-    # Utils.test_synthetic_samples_versus_normal(mnist_data_and_interface, emnist_data_and_interface, PATH_MODELS,record_keeper,device,extra_new_cat_multi=1.25)
-    # print("\n\n\n\nEXTRA SYNTHETIC SAMPLES (x0.5 multiplier)")
-    # Utils.test_synthetic_samples_versus_normal(mnist_data_and_interface, emnist_data_and_interface, PATH_MODELS,record_keeper,device,extra_new_cat_multi=2)
-    # print("\n\n\n\nEXTRA SYNTHETIC SAMPLES (x1 multiplier)")
-    # Utils.test_synthetic_samples_versus_normal(mnist_data_and_interface, emnist_data_and_interface, PATH_MODELS,record_keeper, device,extra_new_cat_multi=1)
-
 
 
 if False:
@@ -483,7 +475,7 @@ if False:
 
 print("NO KL DIVERGENCE")
 
-if True:
+if False:
     gate.add_task_branch(mnist_task_branch, fashion_mnist_task_branch, emnist_task_branch, svhn_task_branch)
 
     #print("Generation, Classification")
