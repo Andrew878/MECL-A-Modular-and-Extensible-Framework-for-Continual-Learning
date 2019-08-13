@@ -171,7 +171,7 @@ class TaskBranch:
 
 
         #REMOVE COMMENT
-       # self.obtain_VAE_recon_error_mean_and_std_per_class(self.initial_directory_path + model_string)
+       #self.obtain_VAE_recon_error_mean_and_std_per_class(self.initial_directory_path + model_string)
 
         self.VAE_most_recent.send_all_to_CPU()
         torch.cuda.empty_cache()
@@ -410,7 +410,7 @@ class TaskBranch:
             self.queue_sum += lowest_recon_error[0][1]
 
 
-        return lowest_recon_error
+        return lowest_recon_error, recon_x
 
 
     def given_task_data_set_find_task_relatedness(self, new_task_data_loader, num_samples_to_check,shear_degree = 0):
@@ -428,7 +428,8 @@ class TaskBranch:
             #     shear_trans = transforms.Compose([transforms.ToPILImage(),lambda img: transforms.functional.affine(img, angle=0,translate=(0,0), scale=1, shear=shear_degree),transforms.ToTensor()])
             #     x = shear_trans(x).float()
 
-            reconstruction_error_sum += self.given_observation_find_lowest_reconstruction_error(x,False)[0][1]
+            lowest_recon_error, recon_x = self.given_observation_find_lowest_reconstruction_error(x,False)
+            reconstruction_error_sum += lowest_recon_error[0][1]
 
             if i > num_samples_to_check:
                 break

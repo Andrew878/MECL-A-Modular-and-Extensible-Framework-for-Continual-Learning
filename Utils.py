@@ -119,7 +119,7 @@ def test_gate_allocation(gate, *data_set_interfaces, number_tests_per_data_set=1
         for i, (x, y) in enumerate(data_loaders['val']):
 
             #            print("actual", y)
-            best_task_recon, best_class_recon, best_task_std, best_class_std = gate.allocate_sample_to_task_branch(x,
+            best_task_recon, best_class_recon, best_task_std, best_class_std,__ = gate.allocate_sample_to_task_branch(x,
                                                                                                                    is_standardised_distance_check=True,
                                                                                                                    is_return_both_metrics=True)
 

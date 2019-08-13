@@ -2,6 +2,8 @@
 
 class EpochRecord:
 
+    """A data structure that records a training process in delimited format"""
+
     def __init__(self,test_name, task, epoch_num_VAE, epoch_num_CNN, sample_num, num_classes, overall_ave_recon,overall_acc,  class_labels, recon_per_class, accuracy_per_class, random_image_per_class_list=None):
 
         self.test_name = test_name
@@ -21,6 +23,7 @@ class EpochRecord:
 
         accuracy_per_class_string = ""
         recon_per_class_string = ""
+
         for i in range(0,len(accuracy_per_class)):
             accuracy_per_class_string += str(accuracy_per_class[i])+self.delimeter
             recon_per_class_string += str(recon_per_class[i])+self.delimeter

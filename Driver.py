@@ -441,8 +441,9 @@ gate = Gate.Gate()
 
 
 
-if False:
-    Utils.test_gate_versus_non_gate(mnist_task_branch, fashion_mnist_task_branch, emnist_task_branch, svhn_task_branch)
+if True:
+    Utils.test_gate_versus_non_gate(mnist_task_branch)
+    #Utils.test_gate_versus_non_gate(mnist_task_branch, fashion_mnist_task_branch, emnist_task_branch, svhn_task_branch)
 
 #Utils.load_VAE_models_and_display_syn_images(PATH_MODELS,mnist_task_branch)
 
@@ -451,13 +452,13 @@ if (is_synthetic_tests):
     print("New and improved synthetic")
     #print("\n\n\n\n(x1.0 multiplier)....sigma is 0.5 FASHION")
     print("\n\n\n\n(x1.0 multiplier)....sigma is 0.5 Fashion MNIST")
-    Utils.test_synthetic_samples_versus_normal_increasing(fashion_mnist_data_and_interface,PATH_MODELS,record_keeper,extra_new_cat_multi=1)
-    print("\n\n\n\n(x1.0 multiplier)....sigma is 0.5 MNIST")
-    Utils.test_synthetic_samples_versus_normal_increasing(mnist_data_and_interface,PATH_MODELS,record_keeper,extra_new_cat_multi=1)
-    print("\n\n\n\n(x1.0 multiplier)....sigma is 0.5 EMNIST")
-    Utils.test_synthetic_samples_versus_normal_increasing(emnist_data_and_interface,PATH_MODELS,record_keeper,extra_new_cat_multi=1)
-    print("\n\n\n\n(x1.0 multiplier)....sigma is 0.5 SVHN")
-    Utils.test_synthetic_samples_versus_normal_increasing(svhn_data_and_interface,PATH_MODELS,record_keeper,extra_new_cat_multi=1)
+    Utils.test_synthetic_samples_versus_normal_increasing(fashion_mnist_data_and_interface,PATH_MODELS,record_keeper,extra_new_cat_multi=1, is_saving=False)
+    # print("\n\n\n\n(x1.0 multiplier)....sigma is 0.5 MNIST")
+    # Utils.test_synthetic_samples_versus_normal_increasing(mnist_data_and_interface,PATH_MODELS,record_keeper,extra_new_cat_multi=1)
+    # print("\n\n\n\n(x1.0 multiplier)....sigma is 0.5 EMNIST")
+    # Utils.test_synthetic_samples_versus_normal_increasing(emnist_data_and_interface,PATH_MODELS,record_keeper,extra_new_cat_multi=1)
+    # print("\n\n\n\n(x1.0 multiplier)....sigma is 0.5 SVHN")
+    # Utils.test_synthetic_samples_versus_normal_increasing(svhn_data_and_interface,PATH_MODELS,record_keeper,extra_new_cat_multi=1)
     #Utils.test_synthetic_samples_versus_normal_increasing_PRETRAINED_VAE(mnist_data_and_interface,PATH_MODELS,record_keeper,extra_new_cat_multi=1)
     #print("\n\n\n\nEXTRA SYNTHETIC SAMPLES (x0.8 multiplier)")
 
@@ -493,10 +494,10 @@ if True:
     #                            svhn_data_and_interface, number_tests_per_data_set=10000)
 
     print("Best fit for a dataset from Gate options. Entire test set")
-    gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(mnist_data_and_interface, [], mnist_data_and_interface.val_set_size)
-    gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(fashion_mnist_data_and_interface, [], fashion_mnist_data_and_interface.val_set_size)
-    gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(emnist_data_and_interface, [], emnist_data_and_interface.val_set_size)
-    gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(svhn_data_and_interface, [], svhn_data_and_interface.val_set_size)
+    gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(mnist_data_and_interface, [], 10)
+    #gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(fashion_mnist_data_and_interface, [], fashion_mnist_data_and_interface.val_set_size)
+    #gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(emnist_data_and_interface, [], emnist_data_and_interface.val_set_size)
+    #gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(svhn_data_and_interface, [], svhn_data_and_interface.val_set_size)
 
 # i =1
 # for list in [['a','b'],['c','d'],['e','f'],['g','h'],['i','j']]:
