@@ -1,23 +1,22 @@
 import torch
 import torch.optim
-import torchvision.transforms.functional as TF
 import CVAE
 import math
 import Utils
 import time
 import copy
-from torchvision import models, transforms
+from torchvision import models
 import torch.nn as nn
 import numpy as np
 import mpu
 import CustomDataSetAndLoaderForSynthetic
 import matplotlib.pyplot as plt
 import EpochRecord
-import queue
-
-import RecordKeeper
 from scipy.ndimage import gaussian_filter
 
+"""This class handles how the handle trains VAEs and CNN's for a specific task. It also generates VAE synthetic samples for pseudo-rehearsal and can be used for plotting images.
+This class often stores pre-trained information to disk. A helper library called MPU achieves this which is credited to Martin Thoma (https://github.com/MartinThoma/mpu/blob/master/mpu/io.py) 
+"""
 
 class TaskBranch:
 
@@ -65,9 +64,10 @@ class TaskBranch:
 
 
     def refresh_variables_for_mutated_task(self):
+
+        """After a task branch is mutated, we need to refresh key object variables"""
         self.mutated_count += 1
         self.num_categories_in_task = self.dataset_interface.num_categories
-        print("num cat 2",self.num_categories_in_task)
         self.categories_list = self.dataset_interface.categories_list
         self.by_category_record_of_reconstruction_error = None
         self.by_category_mean_std_of_reconstruction_error = None
@@ -78,20 +78,22 @@ class TaskBranch:
                              is_new_categories_to_addded_to_existing_task= False, is_completely_new_task=False,
                              epoch_improvement_limit=30, learning_rate=0.00035, betas=(0.5, .999),weight_decay = 0.0001,sample_limit= float('Inf'), is_save=False, ):
 
+        """Creates and trains a VAE either from scratch, or by applying a previously trained model (and if required, amending the dimensions of fully connected layers). """
         self.num_VAE_epochs = num_epochs
 
         # if not using a pre-trained VAE, create new VAE
         if not is_take_existing_VAE:
-            # need to fix hidden dimensions
             self.VAE_most_recent = CVAE.CVAE(self.dataset_interface.original_input_dimensions, hidden_dim, latent_dim,
                                              self.num_categories_in_task,
                                              self.dataset_interface.original_channel_number, self.device)
-            print("create new VAE to handle ",self.num_categories_in_task, self.categories_list)
-        # if using a pre-trained VAE
+
+            print("create new VAE to train on ",self.num_categories_in_task, self.categories_list)
+
+        # if using a pre-trained VAE, copy 'teacher' VAE and use its weights as a template
         else:
             self.VAE_most_recent = copy.deepcopy(teacher_VAE)
 
-            # if adding a new task category to learn
+            # if adding a new task category to learn, then need to changed fully connected layer dimensions
             if (is_completely_new_task or is_new_categories_to_addded_to_existing_task):
                 fc3 = nn.Linear(self.num_categories_in_task, 1000)
                 fc2 = nn.Linear(self.num_categories_in_task, 1000)
@@ -102,18 +104,17 @@ class TaskBranch:
 
             self.VAE_most_recent.to(self.device)
 
+        # intialise variables before training
         patience_counter = 0
         best_train_loss = 100000000000
         self.VAE_optimizer = torch.optim.Adam(self.VAE_most_recent.parameters(), lr=learning_rate, betas=betas,weight_decay=weight_decay)
 
-        #if (not is_new_categories_to_addded_to_existing_task):
+        # obtain pytorch dataloaders for training
         dataloaders = self.dataset_interface.return_data_loaders('VAE', BATCH_SIZE=batch_size)
-        #else:
-         #   dataloaders = self.dataset_interface.obtain_dataloader_with_subset_of_categories('VAE',
-          #                                                                                   new_categories_to_add_to_existing_task,
-           #                                                                                  BATCH_SIZE=batch_size)
 
         start_timer = time.time()
+
+        # cycle through each epoch
         for epoch in range(num_epochs):
 
             # fix epochs
@@ -122,6 +123,7 @@ class TaskBranch:
             val_loss = self.run_a_VAE_epoch_calculate_loss(dataloaders['val'], is_train=False,
                                                            is_synthetic=is_synthetic)
 
+            # this is required if we reached our training set size threshold. It ensures that avergae calculations are correct
             if sample_limit < float('inf'):
                 train_size = sample_limit
             else:
@@ -131,28 +133,28 @@ class TaskBranch:
             val_loss /= self.dataset_interface.val_set_size
             time_elapsed = time.time() - start_timer
 
+            # if training set metrics has improved, update
             if best_train_loss > train_loss:
                 best_train_loss = train_loss
                 patience_counter = 1
                 best_model_wts = copy.deepcopy(self.VAE_most_recent.state_dict())
-                # send to CPU to save on GPU RAM
-
                 print(f'Epoch {epoch}, Train Loss: {train_loss:.2f}, Val Loss: {val_loss:.2f} ', time_elapsed,
                       "**** new best ****")
-
-
             else:
                 print(f'Epoch {epoch}, Train Loss: {train_loss:.2f}, Val Loss: {val_loss:.2f} ', time_elapsed)
                 patience_counter += 1
 
+            # if still haven't seen performance improvement on training set after threshold, cancel training
             if patience_counter > epoch_improvement_limit:
                 break
 
         print('\nTraining complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
         print('Best train loss: {:4f}'.format(best_train_loss))
 
+        # load best trained model parameters
         self.VAE_most_recent.load_state_dict(best_model_wts)
 
+        # post training we save model and store benchmarking variables
         model_string = "VAE " + self.task_name + " epochs" + str(num_epochs) + ",batch" + str(
             batch_size) + ",z_d" + str(
             latent_dim) + ",synth" + str(is_synthetic) + ",rebuilt" + str(is_take_existing_VAE) + ",lr" + str(
@@ -169,51 +171,48 @@ class TaskBranch:
         if is_save:
             torch.save(self.VAE_most_recent, self.VAE_most_recent_path)
 
+        self.obtain_VAE_recon_error_mean_and_std_per_class(self.initial_directory_path + model_string)
 
-        #REMOVE COMMENT
-       #self.obtain_VAE_recon_error_mean_and_std_per_class(self.initial_directory_path + model_string)
-
+        # send model back to GPU and delete cache
         self.VAE_most_recent.send_all_to_CPU()
         torch.cuda.empty_cache()
 
     def reset_queue_variables(self):
+
+        """After training, we need to reset the queue variables for concept drift detection functionality. This ensures that drift is oinly detected on our new model"""
+
         self.history_queue_of_task_relatedness = []
         self.is_need_to_recalibrate_queue = False
         self.queue_sum = 0
 
-    def run_a_VAE_epoch_calculate_loss(self, data_loader, is_train, teacher_VAE=None, is_synthetic=False,
-                                       is_cat_info_required=False, sample_limit = float('Inf')):
+    def run_a_VAE_epoch_calculate_loss(self, data_loader, is_train, is_cat_info_required=False, sample_limit = float('Inf')):
 
-        #self.VAE_most_recent.send_all_to_GPU()
+        """Runs a single epoch thorugh the VAE model and measures performances"""
+
+        # set to training or evaluation mode
         if is_train:
             self.VAE_most_recent.train()
         else:
             self.VAE_most_recent.eval()
 
-        # To update record for mean and std deviation distance. This deletes old entries before calculating
+        # To update record for mean and std deviation relative distance. This deletes old entries before calculating
         if is_cat_info_required:
             self.by_category_record_of_reconstruction_error = {i: [] for i in range(0, self.num_categories_in_task)}
 
         loss_sum = 0
+        # cycle through the dataset
         for i, (x, y) in enumerate(data_loader):
 
-            # To restrict training size
+            # To restrict training size. Break if exceeded
             if sample_limit < (i*data_loader.batch_size):
-                #print("break at ", i*data_loader.batch_size)
                 break
-            # reshape the data into [batch_size, 784]
-            #print(x.size())
-            #x = x.view(batch_size, 1, 28, 28)
             x = x.to(self.device)
-            #print(y)
 
+            # in case we want to measure category-by-category performance
             if is_cat_info_required:
                 cat_record = self.by_category_record_of_reconstruction_error[y.item()]
 
             # convert y into one-hot encoding
-            y_original = y
-            #print("going into one hot")
-            # print(y)
             y = Utils.idx2onehot(y.view(-1, 1), self.num_categories_in_task)
             y = y.to(self.device)
 
@@ -223,58 +222,60 @@ class TaskBranch:
                 self.VAE_optimizer.zero_grad()
 
             # forward pass
-            # track history if only in train
+            # track gradient history if only in train mode
             with torch.set_grad_enabled(is_train):
                 reconstructed_x, z_mu, z_var = self.VAE_most_recent(x, y)
 
-            # loss
+            # get batch loss
             loss = self.VAE_most_recent.loss(x, reconstructed_x, z_mu, z_var)
             loss_sum += loss.item()
-            # print("train? ",is_train, i)
-            # print(loss.item())
-            # print(loss)
 
+            # record cat-by-cat loss info
             if is_cat_info_required:
                 cat_record.append(loss.item())
 
-            if (is_train):
+            # optimise parameters and then zero-gradients
+            if is_train:
                 loss.backward()
                 self.VAE_optimizer.step()
                 self.VAE_optimizer.zero_grad()
 
+            # delete from GPU memory
             del x,y,loss,reconstructed_x, z_mu, z_var
             torch.cuda.empty_cache()
 
-
-
-        #self.VAE_most_recent.send_all_to_CPU()
         return loss_sum
 
-    # def generate_synthetic_batch(self, batch_size = 64):
 
     def load_existing_VAE(self, PATH, is_calculate_mean_std=False):
+
+        """This method loads a pre-trained VAE from memory and also important benchmarking infomation related to this model"""
+
+        # Load model
         self.VAE_most_recent = torch.load(PATH)
 
-        #REMOVE COMMENTS!!!!!
+        # either load pre-saved model benchmarks or calculate them
         if is_calculate_mean_std:
             print(self.task_name, " - Loaded VAE model, now calculating reconstruction error mean, std")
             self.obtain_VAE_recon_error_mean_and_std_per_class(PATH)
-        # else:
-        #     self.by_category_mean_std_of_reconstruction_error = mpu.io.read(PATH + "mean,std.pickle")
-        #     self.overall_average_reconstruction_error = mpu.io.read(PATH + "overallmean.pickle")
+        else:
+            self.by_category_mean_std_of_reconstruction_error = mpu.io.read(PATH + "mean,std.pickle")
+            self.overall_average_reconstruction_error = mpu.io.read(PATH + "overallmean.pickle")
+
 
     def create_and_train_CNN(self, model_id, num_epochs=30, batch_size=64, is_frozen=False, is_off_shelf_model=False,
                              epoch_improvement_limit=20, learning_rate=0.0003, betas=(0.999, .999), weight_decay = 0.0001, is_save=False,sample_limit = float('Inf'), is_synthetic_blend = False):
 
+        """Creates and trains a CNN either from pretrained resnet18, or by applying a previously trained model"""
+
 
         self.num_CNN_epochs = num_epochs
 
-
-        # need to fix hidden dimensions
-
+        # if off the shelf selected, choose ResNet
         if is_off_shelf_model:
             self.CNN_most_recent = models.resnet18(pretrained=True)
 
+            # can freeze all layers except last
             if is_frozen == True:
                 for param in self.CNN_most_recent.parameters():
                     param.requires_grad = False
@@ -283,7 +284,6 @@ class TaskBranch:
             num_ftrs = self.CNN_most_recent.fc.in_features
 
             # create a new fully connected final layer for training
-            #print("self.num_categories_in_task", self.num_categories_in_task)
             self.CNN_most_recent.fc = nn.Sequential(nn.Linear(num_ftrs, self.num_categories_in_task),nn.LogSoftmax(dim=1))
 
             if is_frozen == True:
@@ -295,19 +295,24 @@ class TaskBranch:
                 self.CNN_optimizer = torch.optim.Adam(self.CNN_most_recent.parameters(), lr=learning_rate, betas=betas,weight_decay=weight_decay)
 
         else:
+            # if user has thier own CNN, they can put it here
             self.CNN_most_recent = None
             # all layers being optimised
             self.CNN_optimizer = torch.optim.Adam(self.CNN_most_recent.parameters(), lr=learning_rate, betas=betas,weight_decay=weight_decay)
 
+        # loss funtion
         criterion = nn.CrossEntropyLoss()
 
+        # obtain pytorch dataloader
         dataloaders = self.dataset_interface.return_data_loaders('CNN', BATCH_SIZE=batch_size)
 
+        # initialise variables
         start_timer = time.time()
         best_train_acc = 0.0
         self.CNN_most_recent.to(self.device)
         patience_counter = 0
 
+        # train model with each epoch
         for epoch in range(num_epochs):
 
             train_loss, correct_guesses_train = self.run_a_CNN_epoch_calculate_loss(dataloaders['train'], criterion,sample_limit = sample_limit,
@@ -323,47 +328,48 @@ class TaskBranch:
 
             time_elapsed = time.time() - start_timer
 
+            # best for better training set accuracy
             if best_train_acc < train_acc:
                 best_train_acc = train_acc
                 patience_counter = 1
-
-                # send to CPU to save on GPU RAM
                 best_model_wts = copy.deepcopy(self.CNN_most_recent.state_dict())
                 print(f'Epoch {epoch}, Train Acc: {train_acc:.4f}, Val Acc: {val_acc:.4f} ', time_elapsed,
                       "**** new best ****",correct_guesses_train.item(),"out of",self.dataset_interface.training_set_size,"out of",correct_guesses_val.item(),self.dataset_interface.val_set_size)
-
 
             else:
                 print(f'Epoch {epoch}, Train Acc: {train_acc:.4f}, Val Acc: {val_acc:.4f} ', time_elapsed,correct_guesses_train,self.dataset_interface.training_set_size,correct_guesses_val,self.dataset_interface.val_set_size)
                 patience_counter += 1
 
+            # break early if we are seeing no improvement in training set
             if patience_counter > epoch_improvement_limit:
                 break
 
         print('\nTraining complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
         print('Best val acc: {:4f}'.format(best_train_acc))
 
+        # load best training set model
         self.CNN_most_recent.load_state_dict(best_model_wts)
 
+        # save model
         model_string = "CNN " + self.task_name + " epochs" + str(num_epochs) + ",batch" + str(
             batch_size) + ",pretrained" + str(is_off_shelf_model) + ",frozen" + str(is_frozen) + ",lr" + str(
             learning_rate) + ",betas" + str(betas) + " accuracy " + str(best_train_acc.item()) + " "
         model_string += model_id
-
         self.CNN_most_recent_path = self.initial_directory_path + model_string
-
         if is_save:
             torch.save(self.CNN_most_recent, self.initial_directory_path + model_string)
 
+        # remove from GPU
         self.CNN_most_recent.cpu()
         torch.cuda.empty_cache()
 
     def obtain_VAE_recon_error_mean_and_std_per_class(self, VAE_MODEL_PATH=None):
 
+        """Calculates the per-category performance metrics on the training set. This is then sotred for later retrieval (and saves recalculating several times) """
+
         print("...updating VAE record means, standard deviations...")
 
-        data_loader = self.dataset_interface.return_data_loaders(branch_component='VAE',
-                                                                 BATCH_SIZE=1)
+        data_loader = self.dataset_interface.return_data_loaders(branch_component='VAE',BATCH_SIZE=1)
 
         # get a record of loss reconstruction on training set, but don't do any training
         self.VAE_most_recent.send_all_to_GPU()
@@ -371,63 +377,62 @@ class TaskBranch:
         self.VAE_most_recent.send_all_to_CPU()
         self.overall_average_reconstruction_error = train_loss/self.dataset_interface.training_set_size
 
-        # initialize dictionary
+        # initialize dictionary to record results
         self.by_category_mean_std_of_reconstruction_error = {}
 
+        # calculate mean and std for each category
         for cat in range(0, self.num_categories_in_task):
             mean = np.asarray(self.by_category_record_of_reconstruction_error[cat]).mean(axis=0)
             std = np.asarray(self.by_category_record_of_reconstruction_error[cat]).std(axis=0)
             self.by_category_mean_std_of_reconstruction_error[cat] = (mean, std)
 
+        # write to file
         mpu.io.write(VAE_MODEL_PATH + "mean,std.pickle", self.by_category_mean_std_of_reconstruction_error)
         mpu.io.write(VAE_MODEL_PATH + "overallmean.pickle", self.overall_average_reconstruction_error)
 
 
-
-    # def
-
     def given_observation_find_lowest_reconstruction_error(self, x, is_standardised_distance_check=True):
 
+        """Given an image, calls upon CVAE methods to find the lowest reconstruction error and category. It also adds this observation to the reocrd of task relatedness or order to identify concept drift"""
+
+        # get lowest error information
         lowest_recon_error, recon_x = self.VAE_most_recent.get_sample_reconstruction_error_from_all_category(x,
                                                                                       self.by_category_mean_std_of_reconstruction_error,
                                                                                       is_random=False,
                                                                                       only_return_best=True,
                                                                                       is_standardised_distance_check=is_standardised_distance_check)
+
+        # if observation threshold is reached, add to queue, remove oldest observation and calculate TR
         if len(self.history_queue_of_task_relatedness) >= self.queue_length:
             old_val = self.history_queue_of_task_relatedness.pop(0)
             self.queue_sum += lowest_recon_error[0][1] - old_val
             self.history_queue_of_task_relatedness.append(lowest_recon_error[0][1])
             average_recon = self.queue_sum/self.queue_length
-          #  print(self.queue_sum , average_recon)
             average_task_relatedness = self.given_average_recon_error_calc_task_relatedness(average_recon)
-          #  print("average_task_relatedness",average_task_relatedness)
+
+            # if TR threshodl exceeded, trigger recalibration
             if average_task_relatedness < self.task_relatedness_threshold:
-              #  print("reached 2")
                 self.is_need_to_recalibrate_queue = True
+
+        # if threshold not reached, add to queue
         else:
-            #print("reached 3")
             self.history_queue_of_task_relatedness.append(lowest_recon_error[0][1])
             self.queue_sum += lowest_recon_error[0][1]
-
 
         return lowest_recon_error, recon_x
 
 
-    def given_task_data_set_find_task_relatedness(self, new_task_data_loader, num_samples_to_check,shear_degree = 0):
+    def given_task_data_set_find_task_relatedness(self, new_task_data_loader, num_samples_to_check):
+
+        """Given a new dataset, calculates the TR of it relative to dataset from which the most recent VAE was trained"""
 
         reconstruction_error_sum = 0
         sample_count = 0
+
+        # cycle through new dataset, and maintain record of reconstruction error
         for i, (x, y) in enumerate(new_task_data_loader):
 
             x = x.float()
-
-            # if shear_degree != -1:
-            #     #print(x.size())
-            #     x = torch.squeeze(x)
-            #     #print(x.size())
-            #     shear_trans = transforms.Compose([transforms.ToPILImage(),lambda img: transforms.functional.affine(img, angle=0,translate=(0,0), scale=1, shear=shear_degree),transforms.ToTensor()])
-            #     x = shear_trans(x).float()
-
             lowest_recon_error, recon_x = self.given_observation_find_lowest_reconstruction_error(x,False)
             reconstruction_error_sum += lowest_recon_error[0][1]
 
@@ -438,18 +443,22 @@ class TaskBranch:
 
         reconstruction_error_average = reconstruction_error_sum/sample_count
 
+        # calculate TR
         task_relatedness = self.given_average_recon_error_calc_task_relatedness(reconstruction_error_average)
 
         return reconstruction_error_average, task_relatedness
 
     def given_average_recon_error_calc_task_relatedness(self, reconstruction_error_average):
+
+        """Calculates task relatedness on most recently trained VAE"""
+
         task_relatedness = 1 - abs(self.overall_average_reconstruction_error - reconstruction_error_average) / (
                     self.overall_average_reconstruction_error + reconstruction_error_average)
         return task_relatedness
 
     def generate_single_random_sample(self, category, is_random_cat=False):
+        """generates a single synthetic sample with VAE"""
         return self.VAE_most_recent.generate_single_random_sample(category, is_random_cat)
-
 
 
     def run_a_CNN_epoch_calculate_loss(self, data_loader, criterion, is_train, samples_limited_percentage = 1, sample_limit = float('Inf'),is_synthetic_blend = False):
@@ -705,7 +714,7 @@ class TaskBranch:
                         plt.show()
 
         else:
-            for i, (x, y) in enumerate(data_loader_VAE2['val']):
+            for i, (x, y) in enumerate(data_loader_VAE2['train']):
                 # reshape the data into [batch_size, 784]
                 # print(x.size())
                 # x = x.view(batch_size, 1, 28, 28)
@@ -741,38 +750,22 @@ class TaskBranch:
                     n_checks = 10
 
 
-                    if (prob<math.log(0.5) and is_extra_top_three_method):
+                    if (prob<math.log(0.999999999) and is_extra_top_three_method):
 
-                        one_hot_list = []
                         index_to_cat = []
                         prob_list = []
                         idx = (-outputs.cpu().numpy()).argsort()[:n_checks]
-                        # print("here", math.log(0.8))
-                        # print("idx", idx)
                         for i in range(0,n_checks):
-                            y_one_hot1 = Utils.idx2onehot(torch.tensor([[idx[0,min(i,len(idx))]]]), self.num_categories_in_task).to('cuda')
-                            #y_one_hot3 = Utils.idx2onehot(torch.tensor([[idx[0,min(2,len(idx))]]]), self.num_categories_in_task).to('cuda')
-                            #y_one_hot2 = Utils.idx2onehot(torch.tensor([[idx[0,min(i,len(idx))]]]), self.num_categories_in_task).to('cuda')
+                            y_one_hot1 = Utils.idx2onehot(torch.tensor([[idx[0,min(i,len(idx))]]]), self.num_categories_in_task).to(self.device)
 
                             x_recon1, _, _ = self.VAE_most_recent.encode_then_decode_without_randomness(x_original, y_one_hot)
-                            #x_recon2, _, _ = self.VAE_most_recent.encode_then_decode_without_randomness(x_original, y_one_hot2)
-                            #x_recon3, _, _ = self.VAE_most_recent.encode_then_decode_without_randomness(x_original, y_one_hot3)
                             x_trans1 = self.dataset_interface.transformations['CNN']['test_to_image'](torch.squeeze(x_recon1.cpu()))
-                            #x_trans2 = self.dataset_interface.transformations['CNN']['test_to_image'](torch.squeeze(x_recon2.cpu()))
-                            #x_trans3 = self.dataset_interface.transformations['CNN']['test_to_image'](torch.squeeze(x_recon3.cpu()))
 
                             outputs1 = self.CNN_most_recent(torch.unsqueeze(x_trans1,0).to(self.device))
                             prob1, preds1 = torch.max(outputs1, 1)
                             prob_list.append(prob1)
                             index_to_cat.append(preds1)
 
-                        #outputs2 = self.CNN_most_recent(torch.unsqueeze(x_trans2,0).to(self.device))
-                        #prob2, preds2 = torch.max(outputs2, 1)
-                        #outputs3 = self.CNN_most_recent(torch.unsqueeze(x_trans3,0).to(self.device))
-                        #prob3, preds3 = torch.max(outputs3, 1)
-                        #index_to_cat = [preds1,preds2,preds3]
-                        # print(prob_ten)
-                        #print(prob_list)
                         prob_ten = torch.tensor([prob_list])
                         prob, preds = torch.max(prob_ten,1)
                         cat_chosen = index_to_cat[preds.cpu().item()]

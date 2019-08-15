@@ -24,11 +24,11 @@ random.seed(manualSeed)
 torch.manual_seed(manualSeed)
 
 
-PATH_ROOT = "/cs/scratch/al278/"
 PATH_ROOT = "/cs/tmp/al278/"
+PATH_ROOT = "/cs/scratch/al278/"
 PATH_DATA_MNIST = str(PATH_ROOT)+"MNIST"
 PATH_DATA_FashionMNIST = str(PATH_ROOT) + "FashionMNIST"
-PATH_DATA_EMNIST = str(PATH_ROOT) + "EMNIST"
+PATH_DATA_EMNIST = str(PATH_ROOT) + "EMNIST/EMNIST"
 PATH_DATA_SVHN = str(PATH_ROOT) + "SVHN"
 #PATH_MODELS = str(PATH_ROOT) + "properwithreg/"
 PATH_MODELS = str(PATH_ROOT) + "properwithreg/"
@@ -90,7 +90,7 @@ transforms_CNN_one_channel_to_three = {
 transforms_VAE_one_channel = {
     'train': transforms.Compose([
         transforms.Resize(image_height_MNIST ),
-        #transforms.RandomRotation(10),
+        transforms.RandomRotation(10),
         transforms.ToTensor(),
         #transforms.Normalize(normalise_MNIST_mean, normalise_MNIST_std)
     ]),
@@ -390,7 +390,6 @@ if is_saving:
     fashion_mnist_task_branch.run_end_of_training_benchmarks("initial_training")
     emnist_task_branch.run_end_of_training_benchmarks("initial_training")
     svhn_task_branch.run_end_of_training_benchmarks("initial_training")
-    record_keeper.record_to_file("initial_training")
 
 else:
     print()
@@ -406,10 +405,7 @@ else:
     # emnist_task_branch.load_existing_VAE(PATH_MODELS_INITIAL+"VAE EMNIST epochs100,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 127.20466226039788 final with best state",is_update_mean_std)
     # svhn_task_branch.load_existing_VAE(PATH_MODELS_INITIAL+"VAE SVHN epochs100,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 493.7761688676082 final with best state", is_update_mean_std)
     #
-    # emnist_task_branch.load_existing_CNN(
-    #     PATH_MODELS_INITIAL + "CNN EMNIST epochs50,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 0.9559615384615384 final")
-    # svhn_task_branch.load_existing_CNN(
-    #     PATH_MODELS_INITIAL + "CNN SVHN epochs50,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 0.9726106330669944 final")
+
     mnist_task_branch.load_existing_VAE(PATH_MODELS_INITIAL+"VAE MNIST epochs100,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 100000000000 final",is_update_mean_std)
     fashion_mnist_task_branch.load_existing_VAE(PATH_MODELS_INITIAL+"VAE Fashion epochs100,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 100000000000 final", is_update_mean_std)
 
@@ -442,8 +438,8 @@ gate = Gate.Gate()
 
 
 if False:
-    Utils.test_gate_versus_non_gate(mnist_task_branch)
-    #Utils.test_gate_versus_non_gate(mnist_task_branch, fashion_mnist_task_branch, emnist_task_branch, svhn_task_branch)
+   #Utils.test_gate_versus_non_gate(mnist_task_branch)
+    Utils.test_gate_versus_non_gate(mnist_task_branch, fashion_mnist_task_branch, emnist_task_branch, svhn_task_branch)
 
 #Utils.load_VAE_models_and_display_syn_images(PATH_MODELS,mnist_task_branch)
 
@@ -451,14 +447,14 @@ is_synthetic_tests = False
 if (is_synthetic_tests):
     print("New and improved synthetic")
     #print("\n\n\n\n(x1.0 multiplier)....sigma is 0.5 FASHION")
-    print("\n\n\n\n(x1.0 multiplier)....sigma is 0.5 Fashion MNIST")
-    Utils.test_synthetic_samples_versus_normal_increasing(fashion_mnist_data_and_interface,PATH_MODELS,record_keeper,extra_new_cat_multi=1, is_saving=False)
     # print("\n\n\n\n(x1.0 multiplier)....sigma is 0.5 MNIST")
     # Utils.test_synthetic_samples_versus_normal_increasing(mnist_data_and_interface,PATH_MODELS,record_keeper,extra_new_cat_multi=1)
-    # print("\n\n\n\n(x1.0 multiplier)....sigma is 0.5 EMNIST")
-    # Utils.test_synthetic_samples_versus_normal_increasing(emnist_data_and_interface,PATH_MODELS,record_keeper,extra_new_cat_multi=1)
-    # print("\n\n\n\n(x1.0 multiplier)....sigma is 0.5 SVHN")
-    # Utils.test_synthetic_samples_versus_normal_increasing(svhn_data_and_interface,PATH_MODELS,record_keeper,extra_new_cat_multi=1)
+    #print("\n\n\n\n(x1.0 multiplier)....sigma is 0.5 Fashion MNIST")
+    #Utils.test_synthetic_samples_versus_normal_increasing(fashion_mnist_data_and_interface,PATH_MODELS,record_keeper,extra_new_cat_multi=1)
+    print("\n\n\n\n(x1.0 multiplier)....sigma is 0.5 EMNIST")
+    Utils.test_synthetic_samples_versus_normal_increasing(emnist_data_and_interface,PATH_MODELS,record_keeper,extra_new_cat_multi=1)
+    print("\n\n\n\n(x1.0 multiplier)....sigma is 0.5 SVHN")
+    Utils.test_synthetic_samples_versus_normal_increasing(svhn_data_and_interface,PATH_MODELS,record_keeper,extra_new_cat_multi=1)
     #Utils.test_synthetic_samples_versus_normal_increasing_PRETRAINED_VAE(mnist_data_and_interface,PATH_MODELS,record_keeper,extra_new_cat_multi=1)
     #print("\n\n\n\nEXTRA SYNTHETIC SAMPLES (x0.8 multiplier)")
 
@@ -633,7 +629,7 @@ model_string_cnn.append("CNN MNIST pseudo epochs10,batch64,pretrainedTrue,frozen
 model_string_cnn.append("CNN MNIST pseudo epochs10,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 1.0 increment9synth multi 1")
 
 
-Utils.test_synthetic_samples_versus_normal_increasing_PRETRAINED_VAE(mnist_data_and_interface,PATH_MODELS,model_string_vae, model_string_cnn,record_keeper,extra_new_cat_multi=1)
+#Utils.test_synthetic_samples_versus_normal_increasing_PRETRAINED_VAE(mnist_data_and_interface,PATH_MODELS,model_string_vae, model_string_cnn,record_keeper,extra_new_cat_multi=1)
 
 model_string_vae = []
 model_string_vae.append("VAE Fashion pseudo epochs50,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 268.649826171875 increment0synth multi 1")
@@ -662,7 +658,8 @@ model_string_cnn.append("CNN Fashion pseudo epochs10,batch64,pretrainedTrue,froz
 model_string_cnn.append("CNN Fashion pseudo epochs10,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 0.9996 increment9synth multi 1")
 
 
-Utils.test_synthetic_samples_versus_normal_increasing_PRETRAINED_VAE(fashion_mnist_data_and_interface,PATH_MODELS,model_string_vae, model_string_cnn,record_keeper,extra_new_cat_multi=1)
+Utils.load_VAE_models_and_display_syn_images(PATH_MODELS,model_string_vae, fashion_mnist_task_branch)
+#Utils.test_synthetic_samples_versus_normal_increasing_PRETRAINED_VAE(fashion_mnist_data_and_interface,PATH_MODELS,model_string_vae, model_string_cnn,record_keeper,extra_new_cat_multi=1)
 
 model_string_vae = []
 model_string_vae.append("VAE EMNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 150.01349283854168 increment0synth multi 1")
@@ -690,7 +687,7 @@ model_string_cnn.append("CNN EMNIST pseudo epochs10,batch64,pretrainedTrue,froze
 model_string_cnn.append("CNN EMNIST pseudo epochs10,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 0.9992361111111111 increment8synth multi 1")
 model_string_cnn.append("CNN EMNIST pseudo epochs10,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 0.999375 increment9synth multi 1")
 
-Utils.test_synthetic_samples_versus_normal_increasing_PRETRAINED_VAE(emnist_data_and_interface,PATH_MODELS,model_string_vae, model_string_cnn,record_keeper,extra_new_cat_multi=1)
+#Utils.test_synthetic_samples_versus_normal_increasing_PRETRAINED_VAE(emnist_data_and_interface,PATH_MODELS,model_string_vae, model_string_cnn,record_keeper,extra_new_cat_multi=1)
 
 
 model_string_vae = []

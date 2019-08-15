@@ -6,6 +6,7 @@ import time
 import copy
 from torchvision import models
 import torch.nn as nn
+import TaskBranch as task
 
 
 class Gate:
@@ -94,6 +95,8 @@ class Gate:
 
         print("Closest task is ", most_related_task.task_name, "with a task relativity of", best_task_relativity)
 
+        return task_branch
+
 
     def classify_input_using_allocation_method(self, x):
 
@@ -111,3 +114,77 @@ class Gate:
         pred_cat, probability = lowest_recon_error_best_task_branch.classify_with_CNN(x)
 
         return lowest_recon_error_best_task_branch, pred_cat, probability
+
+    def learn_new_domain_with_transfer_learning(self, new_datasetAndinterface, PATH_MODELS, model_id, num_samples_to_check=100, num_epochs=50,
+                                            batch_size=64, hidden_dim=10, latent_dim=50, epoch_improvement_limit=20,
+                                            learning_rate=0.00035, betas=(0.5, .999), sample_limit = float('Inf'), weight_decay = 0.0001, is_save=False):
+
+        # find best task from new dataset and make a copy of VAE
+        best_fit_template_task = self.given_new_dataset_find_best_fit_domain_from_existing_tasks(new_datasetAndinterface,num_samples_to_check=num_samples_to_check)
+        new_task_to_be_trained_vae = copy.deepcopy(best_fit_template_task.VAE_most_recent)
+
+        # create new task
+        new_task_to_be_trained = task.TaskBranch(new_datasetAndinterface.name, new_datasetAndinterface, best_fit_template_task.device, PATH_MODELS, best_fit_template_task.record_keeper)
+
+
+        # perform training on VAE (with pretrained VAE) and CNN (with ResNet)
+        print("--- Task to be trained: ", new_task_to_be_trained.task_name)
+        print("*********** Training VAE with pretrained weights from ", best_fit_template_task.task_name)
+
+        new_task_to_be_trained.create_and_train_VAE(model_id=model_id, num_epochs=num_epochs,
+                                                    batch_size=batch_size,
+                                                    hidden_dim=10,
+                                                    latent_dim=latent_dim, is_take_existing_VAE=True,
+                                                    teacher_VAE=new_task_to_be_trained_vae.VAE_most_recent,
+                                                    is_completely_new_task=True,
+                                                    epoch_improvement_limit=epoch_improvement_limit,
+                                                    learning_rate=learning_rate, betas=betas, sample_limit=sample_limit,
+                                                    is_save=is_save)
+
+        print("*********** Training CNN with pretrained weights from ResNet18")
+        new_task_to_be_trained.create_and_train_CNN(model_id=model_id,num_epochs=num_epochs, batch_size=batch_size, is_frozen=False,
+                                                   is_off_shelf_model=True, epoch_improvement_limit=20, learning_rate=0.00025,
+                                                   betas=(0.999, .999), weight_decay=weight_decay, is_save=True)
+
+        self.add_task_branch(new_task_to_be_trained)
+        print("Completed VAE and CNN training. New task added to Gate")
+
+
+    def learn_new_category_for_existing_domain(self, new_datasetAndinterface, original_task,category_list_to_add, PATH_MODELS, model_id, num_samples_to_check=100, num_epochs=50,
+                                            batch_size=64, hidden_dim=10, latent_dim=50, epoch_improvement_limit=20,
+                                            learning_rate=0.00035, betas=(0.5, .999), is_save=False):
+
+        print("\nPseudo Samples - create samples")
+        original_task.create_blended_dataset_with_synthetic_samples(original_task.dataset_interface,category_list_to_add,extra_new_cat_multi=1)
+
+        # find best task from new dataset and make a copy of VAE
+        best_fit_template_task = self.given_new_dataset_find_best_fit_domain_from_existing_tasks(new_datasetAndinterface,num_samples_to_check=num_samples_to_check)
+        new_task_to_be_trained_vae = copy.deepcopy(best_fit_template_task.VAE_most_recent)
+
+        # create new task
+        new_task_to_be_trained = task.TaskBranch(new_datasetAndinterface.name, new_datasetAndinterface, best_fit_template_task.device, PATH_MODELS, best_fit_template_task.record_keeper)
+
+        # TRAIN PSEUDO/REAL VAE
+        # note we use transfer learning and take the prior VAE
+        print("\nPseudo Samples - Training VAE")
+        original_task.create_and_train_VAE(model_id=model_id, num_epochs=num_epochs, batch_size=batch_size,
+                                                            hidden_dim=10,
+                                                            latent_dim=latent_dim,
+                                                            is_synthetic=False, is_take_existing_VAE=True,
+                                                            teacher_VAE=original_task.VAE_most_recent,
+                                                            is_new_categories_to_addded_to_existing_task=True,
+                                                            is_completely_new_task=False,
+                                                            epoch_improvement_limit=epoch_improvement_limit,
+                                                            learning_rate=learning_rate, betas=betas,
+                                                            is_save=is_save)
+        # TRAIN PSEUDO/REAL CNN
+        print("\nPseudo Samples - CNN")
+        original_task.create_and_train_CNN(model_id=model_id, num_epochs=num_epochs, batch_size=batch_size,
+                                                            is_frozen=False,
+                                                            is_off_shelf_model=True,
+                                                            epoch_improvement_limit=epoch_improvement_limit,
+                                                            learning_rate=learning_rate,
+                                                            betas=betas, is_save=is_save)
+
+        self.add_task_branch(new_task_to_be_trained)
+        print("Completed VAE and CNN training. New task added to Gate")

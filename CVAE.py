@@ -224,7 +224,7 @@ class CVAE(nn.Module):
             loss, reconstructed_x = self.get_sample_reconstruction_error_from_single_category_without_randomness(x, category,is_random=False,is_already_single_tensor=False)
 
             # place info in data structure
-            info_for_cat = (category, loss)
+            info_for_cat = (category, loss, reconstructed_x)
 
             # check for best with absolute measure
             if (loss < lowest_error_of_cat):

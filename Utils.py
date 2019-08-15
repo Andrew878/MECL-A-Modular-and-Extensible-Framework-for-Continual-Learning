@@ -249,7 +249,7 @@ def test_gate_versus_non_gate(*task_branches, number_tests_per_data_set=1000):
         print("Best task is",task.task_name, confusion_matrix[task.task_name].values())
 
 
-def test_pre_trained_versus_non_pre_trained(new_task_to_be_trained, template_task, model_id, num_epochs=30,
+def test_pre_trained_versus_non_pre_trained(new_task_to_be_trained, template_task, model_id, num_epochs=50,
                                             batch_size=64, hidden_dim=10, latent_dim=50, epoch_improvement_limit=20,
                                             learning_rate=0.00035, betas=(0.5, .999), sample_limit = float('Inf'), is_save=False):
 
@@ -396,7 +396,7 @@ def test_synthetic_samples_versus_normal_increasing(original_task_datasetInterfa
 
 
             # TRAIN PSEUDO/REAL VAE
-            # note we use trnasfer learning and take the prior VAE
+            # note we use transfer learning and take the prior VAE
             print("\nPseudo Samples - Training VAE")
             combined_task_branch_synthetic.create_and_train_VAE(model_id=name, num_epochs=EPOCH_VAE, batch_size=BATCH,
                                                                 hidden_dim=10,
@@ -593,35 +593,24 @@ def test_concept_drift_for_single_task(task_branch, shear_degree_max,shear_degre
 
 
 
-def load_VAE_models_and_display_syn_images(PATH_MODELS, task_branch):
+def load_VAE_models_and_display_syn_images(PATH_MODELS,model_string, task_branch):
 
 
-    """Helper method that displays images from pre-trained VAE models"""
+    """Helper method that displays images from pre-trained VAE model/models"""
 
     task_branch.VAE_most_recent = None
     task_branch.CNN_most_recent = None
 
 
     FOLDER = "real_versus_synth_models/"
-    model_string = []
-    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltFalse,lr0.00035,betas(0.5, 0.999)lowest_error 101.1282752212213 increment0synth multi 1")
-    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 78.45619751514317 increment1synth multi 1")
-    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 89.60624052141372 increment2synth multi 1")
-    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 95.91765151826462 increment3synth multi 1")
-    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 98.84272441048243 increment4synth multi 1")
-    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 102.96877034505208 increment5synth multi 1")
-    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 104.12568975369538 increment6synth multi 1")
-    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 104.48726003921449 increment7synth multi 1")
-    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 108.8118243938762 increment8synth multi 1")
-    model_string.append("VAE MNIST pseudo epochs50,batch64,z_d50,synthFalse,rebuiltTrue,lr0.00035,betas(0.5, 0.999)lowest_error 109.9276000371655 increment9synth multi 1")
 
     i=1
     for string in model_string:
         task_branch.load_existing_VAE(PATH_MODELS+FOLDER+string)
+        task_branch.generate_samples_to_display()
         task_branch.num_categories_in_task = i
         i += 1
 
-    task_branch.load_existing_CNN(PATH_MODELS+FOLDER+"CNN MNIST pseudo epochs10,batch64,pretrainedTrue,frozenFalse,lr0.00025,betas(0.999, 0.999) accuracy 1.0 increment9synth multi 1")
     task_branch.run_end_of_training_benchmarks("double check", is_save=False, is_gaussian_noise_required=True)
 
 
