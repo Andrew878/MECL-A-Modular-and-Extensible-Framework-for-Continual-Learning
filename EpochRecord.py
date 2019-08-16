@@ -10,7 +10,7 @@ class EpochRecord:
         self.task = task
         self.epoch_num_VAE = str(epoch_num_VAE)
         self.epoch_num_CNN = str(epoch_num_CNN)
-        self.sample_num= str(sample_num)
+        self.sample_num = str(sample_num)
         self.num_classes = str(num_classes)
         self.overall_acc = str(overall_acc)
         self.overall_ave_recon = str(overall_ave_recon)

@@ -42,7 +42,7 @@ class TaskBranch:
         self.CNN_optimizer = None
 
         self.overall_average_reconstruction_error = None
-        self.queue_length = 9999
+        self.queue_length = 10000
         self.history_queue_of_task_relatedness = []
         self.is_need_to_recalibrate_queue = False
         self.queue_sum = 0
@@ -187,7 +187,7 @@ class TaskBranch:
 
     def run_a_VAE_epoch_calculate_loss(self, data_loader, is_train, is_cat_info_required=False, sample_limit = float('Inf')):
 
-        """Runs a single epoch thorugh the VAE model and measures performances"""
+        """Runs a single epoch through the VAE model and measures performance"""
 
         # set to training or evaluation mode
         if is_train:
@@ -463,36 +463,25 @@ class TaskBranch:
 
     def run_a_CNN_epoch_calculate_loss(self, data_loader, criterion, is_train, samples_limited_percentage = 1, sample_limit = float('Inf'),is_synthetic_blend = False):
 
-        running_loss = 0.0
-        running_corrects = 0
+        """Runs a single epoch through the CNN model and measures performance"""
 
+        # set to training or evaluation mode
         if is_train:
             self.CNN_most_recent.train()
         else:
             self.CNN_most_recent.eval()
 
-
-
         loss_sum = 0.0
         running_corrects = 0
+        # cycle through the dataset
         for i, (x, y) in enumerate(data_loader):
 
+            # To restrict training size. Break if exceeded
             if sample_limit < (i * data_loader.batch_size):
                 break
-            #if(samples_limited_percentage*data_loader.batch)
 
-            # reshape the data into [batch_size, 784]
-            #print(x.size())
-            # x = x.view(batch_size, 1, 28, 28)
-            #   print(y)
             x = x.to(self.device)
             y = y.to(self.device)
-            #print(y.size())
-            #print(y)
-
-            # convert y into one-hot encoding
-            # y_one_hot = Utils.idx2onehot(y.view(-1, 1), self.num_categories_in_task)
-            # y_one_hot.to(self.device)
 
             # update the gradients to zero
             self.CNN_optimizer.zero_grad()
@@ -502,21 +491,10 @@ class TaskBranch:
             with torch.set_grad_enabled(is_train):
                 outputs = self.CNN_most_recent(x)
                 _, preds = torch.max(outputs, 1)
-                #print(preds)
                 loss = criterion(outputs.to(self.device), y)
-                #print(loss)
 
             loss_sum += loss.item()
             running_corrects += torch.sum(preds == y.data)
-
-            # loss
-            # print("train? ",is_train, i)
-            # print(preds)
-            # print(preds == y.data)
-            # print(torch.sum(preds == y.data))
-            # print(running_corrects)
-            # if(running_corrects> (i+1)*64):
-            #     print("EXCEEDED\n\n\n\n")
 
             # backward + optimize only if in training phase
             if is_train:
@@ -526,79 +504,85 @@ class TaskBranch:
             del x,y,loss,preds,outputs
             torch.cuda.empty_cache()
 
-            # To restrict training size
-
-
         return loss_sum, running_corrects.double()
 
     def load_existing_CNN(self, PATH):
+        """Loads a saved CNN model"""
         self.CNN_most_recent = torch.load(PATH)
 
     def classify_with_CNN(self, x, is_output_one_hot=False):
+
+        """Classifies a sample with CNN"""
 
         self.CNN_most_recent.to(self.device)
         x = x.to(self.device)
         output = self.CNN_most_recent(x)
         preds = output
-
-        #print(output)
+        max_value = None
 
         if not is_output_one_hot:
             max_value, preds = torch.max(output, 1)
-
 
         return preds, max_value
 
     def create_blended_dataset_with_synthetic_samples(self, new_real_datasetInterface,new_categories_to_add_to_existing_task,extra_new_cat_multi=1, is_single_task_recal_process= False):
 
+        """Takes a new dataset (either subset or whole), and combines it with pseudo-samples from the task branches VAE"""
+
+        # plotting flag
         is_plot = False
 
+        # if subset categories haven't been provided, assume all of them are to be added
         if len(new_categories_to_add_to_existing_task) ==0:
             new_categories_to_add_to_existing_task = new_real_datasetInterface.categories_list
 
         synthetic_cat_number = len(self.categories_list)
+
+        # if are adding new categories, add these to our variables
         if not is_single_task_recal_process:
                 self.categories_list.extend(new_categories_to_add_to_existing_task)
-        print(self.categories_list)
+
+        # dictionary that will hold synthetic samples
         self.synthetic_samples_for_reuse = {i: [] for i in self.dataset_splits}
 
+        # adding datasets changes the indices. This dictionary ensures that we can match back to original labels
         original_cat_index_to_new_cat_index_dict = {new_real_datasetInterface.label_to_index_dict[new_cat_label]:self.categories_list.index(new_cat_label) for new_cat_label in new_categories_to_add_to_existing_task}
-        print(original_cat_index_to_new_cat_index_dict )
 
         blended_dataset = {split: {} for split in self.dataset_splits}
 
-        real_db = None
 
+        # cycle through each model type
         for model in ['VAE', 'CNN']:
 
+            # cycle through train and test splits
             for split in self.dataset_splits:
 
-                #subset_dataset_real = new_real_datasetInterface.obtain_dataset_with_subset_of_categories(model,split,new_categories_to_add_to_existing_task)
-                # always VAE for synthetic
+                # obtain the desired subset of real images
                 subset_dataset_real = new_real_datasetInterface.obtain_dataset_with_subset_of_categories('VAE',split,new_categories_to_add_to_existing_task)
 
                 real_db = subset_dataset_real
-               # print(len(real_db))
 
-                size_per_class = 4
+                # decide how many synthetic samples to generate per class
                 size_per_class = round(len(subset_dataset_real) / (len(new_categories_to_add_to_existing_task)*(1/extra_new_cat_multi)))
                 self.synthetic_samples_for_reuse[split] = []
 
-
+                # generate the synthetic samples
                 _, _ = self.VAE_most_recent.generate_synthetic_set_all_cats(
                     synthetic_data_list_unique_label=self.synthetic_samples_for_reuse[split],
                     number_per_category=size_per_class, is_store_on_CPU = True)
-                print("SYN AND REAL model",model,"split",split, "size per class", size_per_class)
 
-
+                # create new blended dataset
                 blended_dataset[split][model] = CustomDataSetAndLoaderForSynthetic.SyntheticDS(
                     self.synthetic_samples_for_reuse[split], self.dataset_interface.transformations,subset_dataset_real,self.categories_list, synthetic_cat_number, original_cat_index_to_new_cat_index_dict)
 
 
-
+        # to reflect new changes to the dataset:
+        # update dataset variables
         self.dataset_interface.update_data_set(blended_dataset)
+        # update task branch variables
         self.refresh_variables_for_mutated_task()
 
+        # plot synthetic figures if desired
         if is_plot:
             fig1 = plt.figure(figsize=(10, 10))
             x = 0
@@ -618,37 +602,25 @@ class TaskBranch:
             plt.ioff()
             plt.show()
 
-        # fig2 = plt.figure(figsize=(10, 10))
-        # x = 30
-        # r = 10
-        # c = 3
-        #
-        # for i in range(x, r * c):
-        #     print(len(self.dataset_interface.dataset['train']['VAE']))
-        #     img, cat = self.dataset_interface.dataset['train']['VAE'][i]
-        #     img = img.view(28, 28).data
-        #     img = img.numpy()
-        #     ax = fig2.add_subplot(r, c, i - x + 1)
-        #     ax.axis('off')
-        #     ax.set_title(cat)
-        #     ax.imshow(img, cmap='gray_r')
-        #
-        # plt.ioff()
-        # plt.show()
 
     def run_end_of_training_benchmarks(self, test_name, dataset_interface = None, is_save = True, is_gaussian_noise_required = False, is_extra_top_three_method = False):
 
+        """Runs a set of benchmarks on the task branch for a given dataset"""
+
+        # plot results flag
         is_plot_results = False
 
+        # if no dataset given, assume it is the object dataset (this if used when we run tests to distort data e.g. shearing test)
         if dataset_interface == None:
             dataset_interface = self.dataset_interface
 
         print("\n *************\nFor task ", self.task_name)
-        # print(self.VAE_most_recent_path)
-        # print(self.CNN_most_recent_path)
 
+        # obtain dataloaders
         data_loader_CNN = dataset_interface.return_data_loaders('CNN', BATCH_SIZE=1)
         data_loader_VAE = dataset_interface.return_data_loaders('VAE', BATCH_SIZE=1)
+
+        # this dataloader is for when we blur the image or feed into VAE for pre-processing
         data_loader_VAE2 = dataset_interface.return_data_loaders('VAE', BATCH_SIZE=1)
 
         self.VAE_most_recent.eval()
@@ -660,6 +632,7 @@ class TaskBranch:
         by_category_record_of_recon_error_and_accuracy = {i: [0, 0, 0] for i in
                                                           range(0, self.num_categories_in_task)}
 
+        # cycle through the VAE format of dataset
         for i, (x, y) in enumerate(data_loader_VAE['val']):
             x = x.to(self.device)
             y_original = y.item()
@@ -669,57 +642,46 @@ class TaskBranch:
             with torch.no_grad():
                 reconstructed_x, z_mu, z_var = self.VAE_most_recent(x, y)
 
-            # loss
+            # calculate loss and make per category record
             loss = self.VAE_most_recent.loss(x, reconstructed_x, z_mu, z_var)
-
             by_category_record_of_recon_error_and_accuracy[y_original][0] += 1
             by_category_record_of_recon_error_and_accuracy[y_original][1] += loss.item()
 
-        classified_nines = 0
 
+        # if we don't choose to add gaussian noise to pre-processing, then classify and record results as normal
         if not is_gaussian_noise_required:
+
+            # cycle through the CNN format of dataset
             for i, (x, y) in enumerate(data_loader_CNN['val']):
-                # reshape the data into [batch_size, 784]
-                # print(x.size())
-                # x = x.view(batch_size, 1, 28, 28)
                 x = x.to(self.device)
                 y_original = y.item()
                 y = y.to(self.device)
 
-
+                # we don't wish to record gradients, since just classifying
                 with torch.no_grad():
                     outputs = self.CNN_most_recent(x)
                     prob, preds = torch.max(outputs, 1)
-                    # print(preds)
-                    # criterion = nn.CrossEntropyLoss()
-                    # loss = criterion(outputs.to(device), y)
-
                     correct = torch.sum(preds == y.data)
 
                 by_category_record_of_recon_error_and_accuracy[y_original][2] += correct.item()
 
-                if preds.item() == self.num_categories_in_task-1:
-                    classified_nines += 1
-
+                # plot 10 images if desired
                 if is_plot_results:
                     if(i<10):
                         print("actual",y.data,"classified",preds, "no Gaussian noise")
                         fig1 = plt.figure(figsize=(5, 5))
                         ax = fig1.add_subplot(1, 3, 1)
                         ax.axis('off')
-        #                generated_x, _, _ = self.VAE_most_recent.encode_then_decode_without_randomness(x,y)
                         ax.imshow(x[0][0].cpu().numpy(), cmap='gray')
-
                         plt.ioff()
                         plt.show()
 
+        # if we do want to add gaussian noise to pre-processing, then need to take observation from VAE format, and then add noise
         else:
-            for i, (x, y) in enumerate(data_loader_VAE2['train']):
-                # reshape the data into [batch_size, 784]
-                # print(x.size())
-                # x = x.view(batch_size, 1, 28, 28)
+            for i, (x, y) in enumerate(data_loader_VAE2['val']):
+
+                # add gaussian noise and turn into tenosr format
                 x_noisy = gaussian_filter(x.cpu().detach().numpy(), sigma=.5)
-                #x_noisy = gaussian_filter(x.cpu().detach().numpy(), sigma=1)
                 x_noisy = torch.Tensor(x_noisy)
                 x_original = x.to(self.device)
                 y_original = y
@@ -727,62 +689,53 @@ class TaskBranch:
                 y = y.to(self.device)
                 y_one_hot = y_one_hot.to(self.device)
 
-                #generated_x, _, _ = self.VAE_most_recent.encode_then_decode_without_randomness(x,y_one_hot.float())
-                #__, generated_x = self.VAE_most_recent.get_sample_reconstruction_error_from_all_category(x)
-                #print(x_noisy.size())
+                # we need to convert to CNN (3 channel) format
                 x_trans = self.dataset_interface.transformations['CNN']['test_to_image']( torch.squeeze(x_noisy))
-                #x = self.dataset_interface.transformations['CNN']['test_to_image'](torch.squeeze(generated_x.cpu()).detach().numpy())
                 x = torch.unsqueeze(x_trans,0)
-                #print(generated_x.size())
-                #print(x.size())
                 x = x.to(self.device)
 
-
+                # now classify as usual
                 with torch.no_grad():
                     outputs = self.CNN_most_recent(x)
-
                     prob, preds = torch.max(outputs, 1)
+                    n_checks = self.num_categories_in_task
 
-                    # print(outputs)
-                    # print(preds)
-                    # print(prob)
-                    # print(y.data)
-                    n_checks = 10
-
-
+                    #  if we wish to classify with VAE images, then apply this additional step
                     if (prob<math.log(0.999999999) and is_extra_top_three_method):
 
                         index_to_cat = []
                         prob_list = []
+                        # order the probabilities from most likely to least likely
                         idx = (-outputs.cpu().numpy()).argsort()[:n_checks]
+
+                        # how many of the top proabilities are we going to feed through the VAE? (default is all of them)
                         for i in range(0,n_checks):
+
+                            # from most probable to least probable category, pass through the VAE and obtain a reconstructed image
                             y_one_hot1 = Utils.idx2onehot(torch.tensor([[idx[0,min(i,len(idx))]]]), self.num_categories_in_task).to(self.device)
+                            x_recon1, _, _ = self.VAE_most_recent.encode_then_decode_without_randomness(x_original, y_one_hot1)
 
-                            x_recon1, _, _ = self.VAE_most_recent.encode_then_decode_without_randomness(x_original, y_one_hot)
+                            # convert to CNN format and classify
                             x_trans1 = self.dataset_interface.transformations['CNN']['test_to_image'](torch.squeeze(x_recon1.cpu()))
-
                             outputs1 = self.CNN_most_recent(torch.unsqueeze(x_trans1,0).to(self.device))
+
+                            # find largest probability out of classification from reconstructed image
                             prob1, preds1 = torch.max(outputs1, 1)
                             prob_list.append(prob1)
                             index_to_cat.append(preds1)
 
+                        # Of all 'best' reconstructed image probabilities choose the 'best' best
                         prob_ten = torch.tensor([prob_list])
                         prob, preds = torch.max(prob_ten,1)
                         cat_chosen = index_to_cat[preds.cpu().item()]
-                        preds =cat_chosen
+                        preds = cat_chosen
 
-
-                    # print(preds)
-                    # print(prob)
-                    # print(y.data,"\n")
 
                     correct = torch.sum(preds == y.data)
 
                 by_category_record_of_recon_error_and_accuracy[y_original.item()][2] += correct.item()
 
-                if preds.item() == 9:
-                    classified_nines += 1
-
+                # plot sample of results if desired
                 if is_plot_results:
                     if(i<20):
                         print("actual",y.data,"classified",preds, "contains gaussian noise")
@@ -806,6 +759,7 @@ class TaskBranch:
         recon_per_class = [0 for i in range(0, self.num_categories_in_task)]
         accuracy_per_class = [0 for i in range(0, self.num_categories_in_task)]
 
+        # print summary of results
         for category in by_category_record_of_recon_error_and_accuracy:
             count = by_category_record_of_recon_error_and_accuracy[category][0]
             recon_ave = by_category_record_of_recon_error_and_accuracy[category][1] / count
@@ -823,8 +777,8 @@ class TaskBranch:
         total_average_recon = total_recon / total_count
         total_accuracy = total_correct / total_count
         print("For all (", total_count, "): Ave. Recon:", total_average_recon, " Ave. Accuracy:", total_accuracy,"\n")
-        print(self.num_categories_in_task-1,"classifications",classified_nines)
 
+        # save the results to an Epoch Record
         if is_save:
             epoch_record = EpochRecord.EpochRecord(test_name, self.task_name, str(self.num_VAE_epochs), str(self.num_CNN_epochs), total_count, self.num_categories_in_task, total_average_recon,total_accuracy, self.categories_list, recon_per_class, accuracy_per_class, random_image_per_class_list=None)
 
@@ -832,46 +786,36 @@ class TaskBranch:
 
     def generate_samples_to_display(self):
 
+        """Generates 3 synthetic samples with fixed noise"""
+
         self.VAE_most_recent.eval()
         self.VAE_most_recent.to(self.device)
         z1 = self.fixed_noise[0]
         z2 = self.fixed_noise[1]
         z3 = self.fixed_noise[2]
 
-        r = self.num_categories_in_task
-        c = 1
-        #c = round(self.num_categories_in_task/2)
-
+        # cycle through each category and print 3 images
         for cat in range(0,self.num_categories_in_task):
 
             fig1 = plt.figure(figsize=(5, 5))
-            #print(cat)
+            # generate three images and plot them
             img1 = self.VAE_most_recent.generate_single_random_sample(cat ,z1).cpu().numpy()
             img2 = self.VAE_most_recent.generate_single_random_sample(cat ,z2).cpu().numpy()
-            #img2 = self.dataset_interface.transformations['CNN']['test_to_image'](self.VAE_most_recent.generate_single_random_sample(cat ,z2).cpu())[0].cpu().numpy()
             img3 = self.VAE_most_recent.generate_single_random_sample(cat ,z3).cpu().numpy()
 
-
-            #ax = fig1.add_subplot(r, c, cat + 1)
             ax = fig1.add_subplot(1, 3, 1)
             ax.axis('off')
-            #ax.set_title(cat)
             ax.imshow(img1, cmap='gray')
 
             ax = fig1.add_subplot(1, 3, 2)
             ax.axis('off')
-            #ax.set_title(cat)
             ax.imshow(img2, cmap='gray')
 
             ax = fig1.add_subplot(1, 3, 3)
             ax.axis('off')
-            #ax.set_title(cat)
             ax.imshow(img3, cmap='gray')
 
             plt.ioff()
             plt.show()
-
-#        plt.ioff()
- #       plt.show()
 
         self.VAE_most_recent.cpu()

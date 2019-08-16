@@ -1,6 +1,5 @@
 from __future__ import print_function, division
 import torch
-#import torch.nn.sigmoid as sigmoid
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np

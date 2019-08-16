@@ -1,13 +1,10 @@
-import torch
 from PIL import Image, ImageOps
-import numpy as np
-
-import torchvision
 import torchvision.transforms.functional as F
 
 
 class Invert(object):
     """
+    Inverts the greyscale for SVHN. All code borrowed from Sebastian Berns:
     https://github.com/sebastianberns/torchvision.transforms.invert/blob/master/invert.py
     Inverts the color channels of an PIL Image
     while leaving intact the alpha channel.

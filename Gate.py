@@ -1,11 +1,6 @@
 import torch
 import torch.optim
-import CVAE
-import Utils
-import time
 import copy
-from torchvision import models
-import torch.nn as nn
 import TaskBranch as task
 
 
@@ -100,7 +95,7 @@ class Gate:
 
     def classify_input_using_allocation_method(self, x):
 
-        "Take an unseen observation, allocate to branch and then classify"
+        """Take an unseen observation, allocate to branch and then classify"""
 
         # find best task
         lowest_recon_error_best_task_branch, lowest_recon_error_best_class, recon_x = self.allocate_sample_to_task_branch(x,
@@ -118,6 +113,9 @@ class Gate:
     def learn_new_domain_with_transfer_learning(self, new_datasetAndinterface, PATH_MODELS, model_id, num_samples_to_check=100, num_epochs=50,
                                             batch_size=64, hidden_dim=10, latent_dim=50, epoch_improvement_limit=20,
                                             learning_rate=0.00035, betas=(0.5, .999), sample_limit = float('Inf'), weight_decay = 0.0001, is_save=False):
+
+        """Learns a completely new Domain using transfer learning.
+        Pre-trained model choice is informed by calculating TR against pre-existing Domains."""
 
         # find best task from new dataset and make a copy of VAE
         best_fit_template_task = self.given_new_dataset_find_best_fit_domain_from_existing_tasks(new_datasetAndinterface,num_samples_to_check=num_samples_to_check)
@@ -154,15 +152,12 @@ class Gate:
                                             batch_size=64, hidden_dim=10, latent_dim=50, epoch_improvement_limit=20,
                                             learning_rate=0.00035, betas=(0.5, .999), is_save=False):
 
-        print("\nPseudo Samples - create samples")
+        """Adds a category to an existing Domain via training with a blend of real samples (new category) and pseudo-samples (old categories)"""
+
+
+        # create fake samples
+        print("\nPseudo Samples - creating samples")
         original_task.create_blended_dataset_with_synthetic_samples(original_task.dataset_interface,category_list_to_add,extra_new_cat_multi=1)
-
-        # find best task from new dataset and make a copy of VAE
-        best_fit_template_task = self.given_new_dataset_find_best_fit_domain_from_existing_tasks(new_datasetAndinterface,num_samples_to_check=num_samples_to_check)
-        new_task_to_be_trained_vae = copy.deepcopy(best_fit_template_task.VAE_most_recent)
-
-        # create new task
-        new_task_to_be_trained = task.TaskBranch(new_datasetAndinterface.name, new_datasetAndinterface, best_fit_template_task.device, PATH_MODELS, best_fit_template_task.record_keeper)
 
         # TRAIN PSEUDO/REAL VAE
         # note we use transfer learning and take the prior VAE
@@ -186,5 +181,3 @@ class Gate:
                                                             learning_rate=learning_rate,
                                                             betas=betas, is_save=is_save)
 
-        self.add_task_branch(new_task_to_be_trained)
-        print("Completed VAE and CNN training. New task added to Gate")

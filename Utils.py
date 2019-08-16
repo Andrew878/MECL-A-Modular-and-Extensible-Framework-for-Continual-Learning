@@ -29,7 +29,7 @@ def generate_list_of_class_category_tensors(N_CLASSES):
     return class_list
 
 
-def test_generating_and_classification_ability_multi_tasks(task_branches, number_per_category=1):
+def test_generating_and_classification_ability_multi_tasks(task_branches, number_per_category=1,device= 'cuda'):
 
     """Takes multiple task branches, performs the generation/classification test"""
 
@@ -40,7 +40,7 @@ def test_generating_and_classification_ability_multi_tasks(task_branches, number
 
         # obtain correct matches by task branch
         correct_matches_by_class = test_generating_and_classification_ability_single_task(number_per_category,
-                                                                                          task_branch)
+                                                                                          task_branch, device)
         # print results
         test_generator_accuracy(correct_matches_by_class, number_per_category)
 
@@ -56,7 +56,7 @@ def test_generating_and_classification_ability_single_task(number_per_category, 
     synthetic_data_list_x, synthetic_data_list_y, = task_branch.VAE_most_recent.generate_synthetic_set_all_cats(
         number_per_category=number_per_category)
 
-    # classifiy the images and return the matches
+    # classify the images and return the matches
     for i in range(0, len(synthetic_data_list_x)):
 
         img_transformed = task_branch.dataset_interface.transformations['CNN']['test_to_image'](
@@ -291,7 +291,7 @@ def test_pre_trained_versus_non_pre_trained(new_task_to_be_trained, template_tas
 
 
 def test_synthetic_samples_versus_normal_increasing(original_task_datasetInterface, PATH_MODELS,record_keeper,
-                                         device='cuda',number_increments=10, extra_new_cat_multi=1):
+                                         device='cuda',number_increments=10, extra_new_cat_multi=1, is_fast_testing = False):
 
     """Tests pseudo rehearsal methods relative to training with real samples. Domains start with a single category Domain, and then it increasing one by one
      Pseudo-rehearsal methods replay past categories from VAE samples, the real sample method uses original data"""
@@ -302,15 +302,20 @@ def test_synthetic_samples_versus_normal_increasing(original_task_datasetInterfa
     is_save = True
     BATCH = 64
     EPOCH_IMPROVE_LIMIT = 20
-    EPOCH_CNN = 10
     BETA_CNN = (0.999, .999)
     LEARNR_CNN = 0.00025
-    EPOCH_VAE = 50
-    LAT_DIM_VAE = 50
     BETA_VAE = (0.5, 0.999)
+    LAT_DIM_VAE = 50
     LEARNR_VAE = 0.00035
     combined_task_branch_synthetic = None
     cat_list_all = original_task_datasetInterface.categories_list
+    EPOCH_CNN = 10
+    EPOCH_VAE = 50
+
+    # to shorten training in order to demonstrate functionality
+    if is_fast_testing:
+        EPOCH_CNN = 2
+        EPOCH_VAE = 2
 
 
 
