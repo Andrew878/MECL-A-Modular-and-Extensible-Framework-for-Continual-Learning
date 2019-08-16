@@ -118,10 +118,8 @@ class TaskBranch:
         for epoch in range(num_epochs):
 
             # fix epochs
-            train_loss = self.run_a_VAE_epoch_calculate_loss(dataloaders['train'], is_train=True,
-                                                             is_synthetic=is_synthetic, sample_limit=sample_limit)
-            val_loss = self.run_a_VAE_epoch_calculate_loss(dataloaders['val'], is_train=False,
-                                                           is_synthetic=is_synthetic)
+            train_loss = self.run_a_VAE_epoch_calculate_loss(dataloaders['train'], is_train=True, sample_limit=sample_limit)
+            val_loss = self.run_a_VAE_epoch_calculate_loss(dataloaders['val'], is_train=False)
 
             # this is required if we reached our training set size threshold. It ensures that avergae calculations are correct
             if sample_limit < float('inf'):

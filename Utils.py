@@ -548,13 +548,13 @@ def test_concept_drift_for_single_task(task_branch, shear_degree_max,shear_degre
 
             # find task relatedness for task branch with recalibration
             reconstruction_error_average, task_relatedness = task_branch.given_task_data_set_find_task_relatedness(
-                dataloader, num_samples_to_check=num_samples_to_check, shear_degree=shear_degree)
+                dataloader, num_samples_to_check=num_samples_to_check)
 
             dataloader = task_branch.dataset_interface.return_data_loaders(branch_component='VAE', BATCH_SIZE=1)[split]
             task_branch_no_recalibration_changes.reset_queue_variables()
 
             # find task relatedness for task branch WITHOUT recalibration
-            reconstruction_error_average_no_recal, task_relatedness_no_recal = task_branch_no_recalibration_changes.given_task_data_set_find_task_relatedness(dataloader, num_samples_to_check=num_samples_to_check, shear_degree=shear_degree)
+            reconstruction_error_average_no_recal, task_relatedness_no_recal = task_branch_no_recalibration_changes.given_task_data_set_find_task_relatedness(dataloader, num_samples_to_check=num_samples_to_check)
 
             print("   --- With shear degree:", shear_degree)
             print("   --- With Recal: Reconstruction error average", reconstruction_error_average, " Task relatedness",task_relatedness, "Number of samples:", num_samples_to_check)
@@ -590,10 +590,10 @@ def test_concept_drift_for_single_task(task_branch, shear_degree_max,shear_degre
                 recal_count += 1
 
             # calculate benchmarks for recalibration versus no-recalibration
-            print("RECALIBRATION: ",recal_count," times")
+            print("\nACCURACY - RECALIBRATION: ",recal_count," times")
             task_branch.run_end_of_training_benchmarks("recalibration vs no recalibration", task_branch.dataset_interface)
 
-            print("NO RECALIBRATION")
+            print("\nACCURACY - NO RECALIBRATION")
             task_branch_no_recalibration_changes.run_end_of_training_benchmarks("recalibration vs no recalibration", task_branch.dataset_interface)
 
 

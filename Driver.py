@@ -7,7 +7,6 @@ import DatasetAndInterface as ds
 import TaskBranch as task
 import Utils
 import Gate
-import CustomDataSetAndLoaderForSynthetic
 import RecordKeeper
 from Invert import Invert
 
@@ -35,11 +34,11 @@ is_train_and_save_new_models = False
 
 #
 # TEST THE FOLLOWING FUNCTIONALITY
-is_gen_classify_test = True
-is_gate_tests = True
-is_continual_learning_incremental_categories_test = True
+is_gen_classify_test = False
+is_gate_tests = False
+is_continual_learning_incremental_categories_test = False
 is_concept_drift_test = True
-is_test_transfer_learning_for_new_domain = True
+is_test_transfer_learning_for_new_domain = False
 
 # to speed up testing but still demonstrate functionality
 is_fast_testing = True
@@ -411,8 +410,8 @@ if is_gate_tests:
     gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(emnist_data_and_interface, [], emnist_size)
     gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(svhn_data_and_interface, [], svhn_size)
 
-    print("\nGate versus non-gate (tests on entire test set....can take a while)")
-    Utils.test_gate_versus_non_gate(mnist_task_branch, fashion_mnist_task_branch, emnist_task_branch, svhn_task_branch)
+    # print("\nGate versus non-gate (tests on entire test set....can take a while)")
+    # Utils.test_gate_versus_non_gate(mnist_task_branch, fashion_mnist_task_branch, emnist_task_branch, svhn_task_branch)
 
 
 if is_continual_learning_incremental_categories_test:
@@ -434,17 +433,10 @@ if is_concept_drift_test:
     print("\n\n\nCONCEPT DRIFT TEST\n\n\n")
     # originally 10000 samples in report, 100 to speed up test
     num_samples_to_check = 10000
-    if is_fast_testing:
-        num_samples_to_check = 100
 
     for task in task_branch_list:
-
         # for purpose of illustrating functionality, make it quicker to see retraining from concept drift
-        task.queue_length = num_samples_to_check/2
         Utils.test_concept_drift_for_single_task(task_branch=task, shear_degree_max=30,shear_degree_increments=10, split='train', num_samples_to_check=num_samples_to_check)
-        # change back
-        task.queue_length = 10000
-        task.reset_queue_variables()
 
 
 if is_test_transfer_learning_for_new_domain:

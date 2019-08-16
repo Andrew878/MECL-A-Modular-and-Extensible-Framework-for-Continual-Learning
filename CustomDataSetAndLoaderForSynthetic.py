@@ -37,7 +37,6 @@ class SyntheticDS(Dataset):
         """
         original_index, real_or_fake = self.index_key[new_index]
 
-        self.freq += 1
 
         # real and fake images are in slightly different forms
         if(real_or_fake == 'fake'):

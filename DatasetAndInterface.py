@@ -232,8 +232,8 @@ class DataSetAndInterface:
         that adds new categories"""
 
         # flags that call upon helper code
-        is_count_freq = True
-        is_plot_true = True
+        is_count_freq = False
+        is_plot_true = False
 
         self.training_set_size = len(self.dataset['train']['VAE'])
         self.val_set_size = len(self.dataset['val']['VAE'])
