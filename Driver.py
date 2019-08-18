@@ -410,8 +410,8 @@ if is_gate_tests:
     gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(emnist_data_and_interface, [], emnist_size)
     gate.given_new_dataset_find_best_fit_domain_from_existing_tasks(svhn_data_and_interface, [], svhn_size)
 
-    # print("\nGate versus non-gate (tests on entire test set....can take a while)")
-    # Utils.test_gate_versus_non_gate(mnist_task_branch, fashion_mnist_task_branch, emnist_task_branch, svhn_task_branch)
+    print("\nGate versus non-gate (tests on entire test set....can take a while)")
+    Utils.test_gate_versus_non_gate(mnist_task_branch, fashion_mnist_task_branch, emnist_task_branch, svhn_task_branch)
 
 
 if is_continual_learning_incremental_categories_test:
@@ -431,11 +431,9 @@ if is_continual_learning_incremental_categories_test:
 
 if is_concept_drift_test:
     print("\n\n\nCONCEPT DRIFT TEST\n\n\n")
-    # originally 10000 samples in report, 100 to speed up test
     num_samples_to_check = 10000
 
     for task in task_branch_list:
-        # for purpose of illustrating functionality, make it quicker to see retraining from concept drift
         Utils.test_concept_drift_for_single_task(task_branch=task, shear_degree_max=30,shear_degree_increments=10, split='train', num_samples_to_check=num_samples_to_check)
 
 
